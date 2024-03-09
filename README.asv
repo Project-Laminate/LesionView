@@ -2,7 +2,7 @@
 
 # LesionView Application
 
-LesionView is designed to review and compare lesions at two time points. 
+LesionView is designed to compare lesions, generate reports, and decide on lesion classification (e.g., keep, draft, delete) based on visual inspection.
 
 ## Prerequisites
 
@@ -14,7 +14,7 @@ LesionView is designed to review and compare lesions at two time points.
 
 - **T2 Flair Images**: MRI images at baseline and followup. These should be in NIfTI format.
 - **Lesion Masks**: Binary masks indicating the location of lesions within the brain at baseline and followup. These should be binary images of the same size and orientation as the T2 flair images.
-- **Brain Mask** (optional): A binary mask indicating the brain region. 
+- **Brain Mask** (optional): A binary mask indicating the brain region. Used to enhance visualization.
 
 ## Usage
 
@@ -34,9 +34,23 @@ The app can generate the following outputs:
 
 ## Report Contents
 
+Each report includes:
+
+- A title page with the subject ID.
 - 3D visualizations of lesions at baseline and followup.
 - Textual summary of lesion counts and volumes.
-- A bar graph showing the lesion size change between baseline and followup.
-- 2D view of each new lesions at baseline and followup.
+- A bar graph showing the size change across baseline.
+
+## Features Waiting to be Implemented
+
+Future updates may include:
+
+- Automatic lesion detection and classification.
+- Enhanced reporting features.
+- Integration with additional imaging modalities.
+
+## Contributing
+
+Contributions to improve LesionView are welcome. Please feel free to fork the repository, make your changes, and submit a pull request.
 
 
