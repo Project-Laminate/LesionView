@@ -27,6 +27,7 @@ LesionView is designed to review and compare lesions at two time points.
 
 ### For Report Generation:
 - Ensure you have loaded the cleaned and final lesion masks post-review. The app generates reports based on these cleaned-up masks.
+- Optionally you can click the checkbox for new lesion and delete the new lesions that you do not wish to be included in the report
 - Click "Export" 
 
 For report generation, it's crucial to use lesion masks that have been reviewed to ensure the accuracy and relevance of the generated reports. This report is only as accuracte as the lesion masks. 
