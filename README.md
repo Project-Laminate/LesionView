@@ -42,10 +42,12 @@ The app can generate the following outputs:
 - **PDF Reports**: A PDF report including lesion counts, volumes, and comparative visualizations.
 
 ## Report Contents
-
+- **Page 1**
 - 3D visualizations of lesions at baseline and followup
 - Summary of lesion counts and volumes
-- A bar graph showing the lesion size change 
+- A bar graph showing the lesion size change
+- 2D view of the change of the larget lesion
+- **Page 2+**
 - 2D view of each new lesions
 
 ## Currently hardcoded variables 
