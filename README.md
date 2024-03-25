@@ -22,6 +22,7 @@ LesionView is designed to review and compare lesions at two time points.
 ### For Lesion Review:
 - Use the visualization tools to examine lesions across the two time points.
 - Review each lesion and mark it as "keep", "draft", or "delete".
+- Edit each lesion and mark it as "Merge", "Clone 1", "Clone 2", or "Reset".
 - Click "SAVE .nii"
 - Use other software like *fsleyes* to edit lesions in draft.nii and merge it with clean.nii as the final lesion mask 
 
@@ -52,7 +53,6 @@ The app can generate the following outputs:
 - 2D view of each new lesions
 
 ## Currently hardcoded variables 
-- incorrect BIDS path
 - remove lesions less than 5 ml 
 
 
