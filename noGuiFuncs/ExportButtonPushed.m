@@ -289,7 +289,7 @@
             % Create the Ghostscript command for merging
             %cmd = sprintf('/opt/homebrew/bin/gs -dBATCH -dNOPAUSE -q -sDEVICE=pdfwrite -sOutputFile="%s"', outputFile);
             
-            cmd = sprintf('%s/gs -dBATCH -dNOPAUSE -q -sDEVICE=pdfwrite -sOutputFile="%s"',pwd,outputFile);
+            cmd = sprintf('/usr/local/bin/gs -dBATCH -dNOPAUSE -q -sDEVICE=pdfwrite -sOutputFile="%s"',pwd,outputFile);
 
             % Append each input file to the command
             for ii = 1:length(inputFiles)

@@ -8,7 +8,7 @@ subjects = dir(fullfile(bidsDir,'derivatives','tmp_lesion','*sub*'));
 addpath(genpath(fullfile(pwd,'noGuiFuncs')));
 %% run all sub
 tic
-for whichSub = 12:numel(subjects)
+for whichSub = 3%17:numel(subjects)
     subject = subjects(whichSub).name;
     hasLesion1 = dir(fullfile(subjects(whichSub).folder,subject,'ses-01','*lesion*nii*'));
     hasLesion2 = dir(fullfile(subjects(whichSub).folder,subject,'ses-02','*lesion*nii*'));

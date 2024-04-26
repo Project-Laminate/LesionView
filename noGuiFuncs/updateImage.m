@@ -134,9 +134,9 @@ end
 
             timePointText = sprintf('Time %d', app.currentImageIndex); % Convert index to text
 
-            text(app.UIAxes, 0.95, 0.05, timePointText, 'Units', 'normalized', 'HorizontalAlignment', 'right', 'VerticalAlignment', 'bottom', 'Color', 'white', 'FontSize', 15, 'FontWeight', 'bold');
-            text(app.UIAxes, 0.82, 0.05, 'L', 'Units', 'normalized', 'HorizontalAlignment', 'right', 'VerticalAlignment', 'bottom', 'Color', [0.5 0.5 0.5], 'FontSize', 15, 'FontWeight', 'bold','FontAngle','italic');
-            text(app.UIAxes, 0.62, 0.18, 'L', 'Units', 'normalized', 'HorizontalAlignment', 'right', 'VerticalAlignment', 'bottom', 'Color', [0.5 0.5 0.5], 'FontSize', 15, 'FontWeight', 'bold','FontAngle','italic');
+            text(app.UIAxes, 0.95, 0.04, timePointText, 'Units', 'normalized', 'HorizontalAlignment', 'right', 'VerticalAlignment', 'bottom', 'Color', 'white', 'FontSize', 12, 'FontWeight', 'bold');
+            text(app.UIAxes, 0.82, 0.04, 'L', 'Units', 'normalized', 'HorizontalAlignment', 'right', 'VerticalAlignment', 'bottom', 'Color', [0.5 0.5 0.5], 'FontSize', 12, 'FontWeight', 'bold','FontAngle','italic');
+            text(app.UIAxes, 0.62, 0.18, 'L', 'Units', 'normalized', 'HorizontalAlignment', 'right', 'VerticalAlignment', 'bottom', 'Color', [0.5 0.5 0.5], 'FontSize', 12, 'FontWeight', 'bold','FontAngle','italic');
 
             hold(app.UIAxes, 'off'); % Release the hold to prevent further overlays on top
 
