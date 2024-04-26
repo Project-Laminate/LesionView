@@ -1,0 +1,3 @@
+# Ignore everything these folders
+backup/*
+tmp/*
