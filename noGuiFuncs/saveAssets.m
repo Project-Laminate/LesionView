@@ -5,6 +5,8 @@ app = updateLesionSize(app);
 outputDir = fullfile(app.bidsDir,'derivatives','Assets',app.subject);
 if ~isfolder(outputDir)
     mkdir(outputDir)
+else
+    delete(dir(fullfile(outputDir,'*'))); % clear all
 end
 
 %% Process and display each image
