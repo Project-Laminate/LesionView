@@ -739,10 +739,14 @@ classdef CvsView_exported < matlab.apps.AppBase
                 app.imgSettings(k, 1) = min(d(:));
                 app.imgSettings(k, 2) = max(d(:));
                 
-                % Compute Default Range (5th and 95th percentile)
+                % Compute Default Range
                 % Subsample for speed
                 d_sub = d(1:20:end); 
-                p = prctile(d_sub, [5 95]);
+                if k == 4 % Phase: 35th and 65th percentile
+                    p = prctile(d_sub, [35 65]);
+                else % Others (FlairStar, SWI, FLAIR): 5th and 99th percentile
+                    p = prctile(d_sub, [5 99]);
+                end
                 app.imgSettings(k, 3) = p(1);
                 app.imgSettings(k, 4) = p(2);
             end
@@ -929,24 +933,28 @@ classdef CvsView_exported < matlab.apps.AppBase
                         LesionReviewButtonGroupSelectionChanged(app, []);
 
                     case '1'
-
-                        app.LesionEditButtonGroup.SelectedObject = findobj(app.LesionEditButtonGroup.Children, 'Text', 'Clone 1');
-                        LesionEditButtonGroupSelectionChanged(app, []);
+                        if app.fileStatus(1)
+                            app.ButtonGroup.SelectedObject = app.FlairStarButton;
+                            ButtonGroupSelectionChanged(app, []);
+                        end
 
                     case '2'
-
-                        app.LesionEditButtonGroup.SelectedObject = findobj(app.LesionEditButtonGroup.Children, 'Text', 'Clone 2');
-                        LesionEditButtonGroupSelectionChanged(app, []);
+                        if app.fileStatus(3)
+                            app.ButtonGroup.SelectedObject = app.SWIButton;
+                            ButtonGroupSelectionChanged(app, []);
+                        end
 
                     case '3'
-
-                        app.LesionEditButtonGroup.SelectedObject = findobj(app.LesionEditButtonGroup.Children, 'Text', 'Merge');
-                        LesionEditButtonGroupSelectionChanged(app, []);
+                        if app.fileStatus(5)
+                            app.ButtonGroup.SelectedObject = app.FLAIRButton;
+                            ButtonGroupSelectionChanged(app, []);
+                        end
 
                     case '4'
-
-                        app.LesionEditButtonGroup.SelectedObject = findobj(app.LesionEditButtonGroup.Children, 'Text', 'Reset');
-                        LesionEditButtonGroupSelectionChanged(app, []);
+                        if app.fileStatus(4)
+                            app.ButtonGroup.SelectedObject = app.Phase;
+                            ButtonGroupSelectionChanged(app, []);
+                        end
 
                  
 
