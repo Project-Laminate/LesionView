@@ -2,26 +2,29 @@ classdef CvsView_exported < matlab.apps.AppBase
 
     % Properties that correspond to app components
     properties (Access = public)
-        UIFigure                 matlab.ui.Figure
-        LeftPanel                matlab.ui.container.Panel
-        LesionReviewButtonGroup  matlab.ui.container.ButtonGroup
-        DeleteButton             matlab.ui.control.ToggleButton
-        DraftButton              matlab.ui.control.ToggleButton
-        KeepButton               matlab.ui.control.ToggleButton
-        Slider                   matlab.ui.control.RangeSlider
-        SliderLabel              matlab.ui.control.Label
-        goToFirstLes             matlab.ui.control.Button
-        goToLastLes              matlab.ui.control.Button
-        LesionIndexSpinner       matlab.ui.control.Spinner
-        OverlayAlpha             matlab.ui.control.Slider
-        LoadBIDSButton           matlab.ui.control.Button
-        ExportNIfTIButton        matlab.ui.control.Button
-        ProgressTextArea         matlab.ui.control.TextArea
-        y0                       matlab.ui.control.Spinner
-        z0                       matlab.ui.control.Spinner
-        x0                       matlab.ui.control.Spinner
-        ExportPNGButton          matlab.ui.control.Button
-        UIAxes                   matlab.ui.control.UIAxes
+        UIFigure                    matlab.ui.Figure
+        LeftPanel                   matlab.ui.container.Panel
+        ButtonGroup                 matlab.ui.container.ButtonGroup
+        Phase                       matlab.ui.control.ToggleButton
+        FLAIRButton                 matlab.ui.control.ToggleButton
+        SWIButton                   matlab.ui.control.ToggleButton
+        FlairStarButton             matlab.ui.control.ToggleButton
+        HowlikelyisthereaveinLabel  matlab.ui.control.Label
+        AdjustcontrastLabel         matlab.ui.control.Label
+        Slider                      matlab.ui.control.RangeSlider
+        CheckBox                    matlab.ui.control.CheckBox
+        likelihoodSlider            matlab.ui.control.Slider
+        goToFirstLes                matlab.ui.control.Button
+        goToLastLes                 matlab.ui.control.Button
+        LesionIndexSpinner          matlab.ui.control.Spinner
+        LoadBIDSButton              matlab.ui.control.Button
+        ExportNIfTIButton           matlab.ui.control.Button
+        ProgressTextArea            matlab.ui.control.TextArea
+        y0                          matlab.ui.control.Spinner
+        z0                          matlab.ui.control.Spinner
+        x0                          matlab.ui.control.Spinner
+        ExportPNGButton             matlab.ui.control.Button
+        UIAxes                      matlab.ui.control.UIAxes
     end
 
 
@@ -31,54 +34,56 @@ classdef CvsView_exported < matlab.apps.AppBase
         subject = 'sub - xxx'; % e.g. sub-001 - Identifier for the subject
         bidsDir
         lesionDerivDir
-        voxelSize = 0.7*0.7*0.7./1000; % Voxel size for the images, adjust based on your data
         FlairInfo % metadata - Information about the T2 flair images (used for saving or processing)
-        fileStatus = [false,false]; % whether each files are loaded
+        fileStatus = [false,false,false,false,false]; % whether each files are loaded
         allowKey = 0;
         
 
         % Image data properties
-        FlairTP1 % 3D matrix - T2 flair image at time point 1
+        FlairStar % 3D matrix -  flairstar image at time point 1
+        flair
+        swi
+        phase
         Lesion1 % 3D matrix - Lesion image at time point 1
-        tmpLesionNameClean1
-        tmpLesionNameDraft1
+        cvsNiftiName
         backupLesion1
+        OverlayAlpha = 1;
 
         % Image analyses properties
         L1 % 3D matrix - Processed lesion image with lables at time point 1 for analysis
         L1backUp % 3D matrix - backup of L1
+        L1raw
         whichT2 % 3D matrix - The variable to hold the currently selected 3D T2 image data
         whichLes % 3D matrix - The variable to hold the currently selected lesion data
-        sizeChange % numLes by 3 - [size1, size2, size2-size1] - To store the results of lesion size change analysis
-        lesionCenter % numLes by 3 - [x, y, z] - Center coordinates of lesions, used for visualization adjustments
+        lesionCenter = [1 1 1]; % numLes by 3 - [x, y, z] - Center coordinates of lesions, used for visualization adjustments
 
         % Indexing
         currentIndex = 1 % scaler - Index of the currently selected lesion for processing
-        currentImageIndex = 1 % 1 or 2 - Indicates the current image being displayed (1 for FlairTP1, 2 for FlairTP2)
+        currentImageIndex = 1 % 1 or 2 - Indicates the current image being displayed (1 for FlairStar, 2 for FlairTP2)
         lesionIndex % numLes by 1 - Array of unique indices for each lesion
         whichIndex % which index list are currently being use, i.e, are we viewing all lesions or only new lesion etc
         largestLesion = 1
         lesionVol
 
+
         % Visualization and UI elements
         sizeZoom double = 26; % Zoom window size for detailed lesion viewing
+        colorrange = zeros(4,2);
 
         hLes % Placeholder for lesion visualization handles
         fig % Main figure for export
         progressBarLength
         blueColor = [0,120,255]./255;
 
-
         hLes_other 
         hLes_selected 
 
         % Lesion processing and review properties
-        Lesion1Clean % 3D matrix - Cleaned lesion image at time point 1
-        Lesion1Draft % 3D matrix - Draft lesion image at time point 1
+        cvsMat % 3D matrix - Cleaned lesion image at time point 1
+        cvsP % numLes by 1 - Stores the p for each lesion
+        sizeChange
 
         newLesionMask % % 3D matrix - Cleaned lesion image at time point 2 (color coded 1 2 3)
-        LesionReviewStates % numLes by 2 time points - Stores the review state ('keep', 'draft', 'delete') for each lesion
-        LesionEditStates % numLes by 2 time points - Stores the edit state ('merge', 'clone1', 'clone2','reset') for each lesion
     end
 
 
@@ -122,7 +127,7 @@ classdef CvsView_exported < matlab.apps.AppBase
             img = [toprow; botrow];
 
             % Display the combined image in UIAxes
-            imshow(img, 'DisplayRange', [app.Slider.Value(1) app.Slider.Value(2)], 'Parent', app.UIAxes); % adjust color range when Flair is loaded
+            imshow(img, 'DisplayRange',[app.Slider.Value(1) app.Slider.Value(2)], 'Parent', app.UIAxes); % adjust color range when Flair is loaded
             hold(app.UIAxes, 'on'); % Keep the original image, allowing overlays to be added
 
             % --- Prepare Lesion Overlays ---
@@ -131,7 +136,6 @@ classdef CvsView_exported < matlab.apps.AppBase
             if ~isempty(app.L1)
                 currentLesionMask = flip(app.L1, 2);
                 currentLesionMask = flip(currentLesionMask, 3);
-                currentLesionMask(ismember(currentLesionMask, app.lesionIndex(app.LesionReviewStates(:,1) == "delete"))) = 0;
             else
                 currentLesionMask = app.whichLes;
             end
@@ -227,11 +231,11 @@ classdef CvsView_exported < matlab.apps.AppBase
 
             % Display other lesions in blue
             app.hLes_other = imshow(tmpImg_other, 'Parent', app.UIAxes);
-            set(app.hLes_other, 'AlphaData', double(img_other) * app.OverlayAlpha.Value);
+            set(app.hLes_other, 'AlphaData', double(img_other) * app.OverlayAlpha);
 
             % Display selected lesion in green
             app.hLes_selected = imshow(tmpImg_selected, 'Parent', app.UIAxes);
-            set(app.hLes_selected, 'AlphaData', double(img_selected) * app.OverlayAlpha.Value); % Ensure you have a SelectedOverlayAlpha property
+            set(app.hLes_selected, 'AlphaData', double(img_selected) * app.OverlayAlpha); % Ensure you have a SelectedOverlayAlpha property
 
             % --- Draw Zoom Rectangles (Optional) ---
 
@@ -267,60 +271,58 @@ classdef CvsView_exported < matlab.apps.AppBase
 
         function analyzeLesions(app)
             close all;
-            % This function analyzes lesions across two time points to identify new,
-            % continuing, and merged lesions. It labels each lesion, matches lesions
-            % across time points, calculates their volumes, and updates the UI
-            % components accordingly.
 
-            % Label the lesions in each time point image using a binary threshold of 0.8
-            % and a connectivity of 26.
+            app.L1 = uint32(bwlabeln(app.Lesion1 > 0.8, 26));
+            N = double(max(app.L1(:))); if isempty(N) || N==0, N = 1; end
 
-            [app.L1, ~] = bwlabeln(app.backupLesion1  > 0.8, 26);
-            lesion1index = nonzeros(unique(app.L1));
-            app.lesionVol = zeros(nnz(lesion1index), 1);
-            for ii = 1:nnz(lesion1index)
-                app.lesionVol(ii) = max([nnz(app.L1 == ii)]); % Number of voxels in the ith lesion
+            % --- Map VIEW labels directly to RAW grid (no intersection with RAW mask) ---
+            Lview2raw = imresize3(double(app.L1), size(app.backupLesion1), 'nearest');
+
+            % expose mapped labels if needed elsewhere
+            app.L1raw = uint32(Lview2raw);
+
+            % --- RAW-space voxel counts per VIEW-ID (do not gate by Lraw0) ---
+            vi  = double(Lview2raw(:));
+            vi  = vi(vi>=1 & vi<=N);
+            cnt = accumarray(vi, 1, [N, 1]);
+
+            % ---- Optional size filtering (in RAW voxels) ----
+            minVox = 75;
+            if isprop(app,'minLesionVox') && ~isempty(app.minLesionVox), minVox = double(app.minLesionVox); end
+            if minVox>0
+                kill = find(cnt < minVox);
+                if ~isempty(kill)
+                    app.L1(ismember(app.L1, kill))       = 0;
+                    app.L1raw(ismember(app.L1raw, kill)) = 0;
+                    % recompute counts after pruning
+                    N   = double(max(app.L1,[],'all'));
+                    cnt = accumarray(double(app.L1raw(app.L1raw>0)),1,[max(N,1),1]); cnt = cnt(1:N);
+                end
             end
 
-            [app.L1, ~] = bwlabeln(app.Lesion1 > 0.8, 26);
+            % ---- Sort so label 1 is LARGEST (by RAW volume) and relabel both maps ----
+            labels = find(cnt>0);
+            [~,ord] = sort(cnt(labels),'descend'); ranked = labels(ord);
+            lut = zeros(max([labels;1]),1,'uint32');
+            if ~isempty(ranked), lut(ranked) = uint32(1:numel(ranked)); end
 
-            % Initialize arrays to store new indices for matched lesions across time points
-            lesion1index = nonzeros(unique(app.L1));
-    
-            updateProgress(app,[' ...']);
+            % ---- SAFE relabel: extend LUT to cover any label IDs in either map ----
+            K  = max([1 double(max(app.L1(:))) double(max(app.L1raw(:)))]);
+            if numel(lut) < K, lut(end+1:K,1) = uint32(0); end                      % grow LUT
+            bad = setdiff(1:K, double(labels));                                     % IDs not in cnt>0
+            if ~isempty(bad), lut(bad) = uint32(0); end                              % map orphans to 0
 
+            fg = app.L1>0;    app.L1(fg)    = lut(double(app.L1(fg)));
+            fg = app.L1raw>0; app.L1raw(fg) = lut(double(app.L1raw(fg)));
 
-            valueToIndex = containers.Map(unique(lesion1index), 1:numel(unique(lesion1index)));
-            lesion1index = arrayfun(@(x) valueToIndex(x),lesion1index);
-
-            [~, loc] = ismember(app.L1, lesion1index);
-            loc(loc > 0) = lesion1index(loc(loc > 0));
-            app.L1(loc > 0) = loc(loc > 0);
-
-            updateProgress(app,'Sorting lesions by size ...')
-            newlist = unique(lesion1index);
-            lesionVol = zeros(nnz(newlist), 1);
-            for ii = 1:nnz(newlist)
-                lesionVol(ii) = max([nnz(app.L1 == ii)]); % Number of voxels in the ith lesion
-            end
-
-            [~,newlistOrder] = sort(lesionVol,'descend');
-
-            [~, loc] = ismember(app.L1, newlistOrder);
-            loc(loc > 0) = newlist(loc(loc > 0));
-            app.L1(loc > 0) = loc(loc > 0);
-
-
-            % remove any lesion size less than xxx
-            app.L1(ismember(app.L1, find(sort(lesionVol,'descend')<3))) = 0;
-
+            % ---- Store volumes to match new IDs (index = new ID) ----
+            app.lesionVol = cnt(ranked);
 
             updateProgress(app,'Calculating lesion centers ...')
 
             % Calculate the center of each lesion for visualization
             app.lesionIndex = nonzeros(unique(app.L1)); % Combined list of unique lesion indices
             app.lesionCenter = zeros(numel(app.lesionIndex), 3);
-            % Note: Image orientation adjustments might be necessary for correct visualization
             tmpL1 = flip(app.L1, 2);
             tmpL1 = flip(tmpL1, 3);
 
@@ -339,21 +341,13 @@ classdef CvsView_exported < matlab.apps.AppBase
                 [~, app.lesionCenter(app.lesionIndex(ii), 2)] = max(squeeze(sum(sum(binaryMat, 1), 3)));
                 [~, app.lesionCenter(app.lesionIndex(ii), 3)] = max(squeeze(sum(sum(binaryMat, 1), 2)));
             end
-            % Calculate the change in lesion size between two time points and convert to volume
-            app.sizeChange  =  app.sizeChange * app.voxelSize;
-            
 
- 
             % Set the limits and enable the lesion index spinner based on available lesions
+         
             app.LesionIndexSpinner.Limits = [1, size(app.lesionCenter, 1)];
             app.LesionIndexSpinner.Enable = 'on';
-            % Initialize the review states for each lesion across both time points as "keep"
-            app.LesionReviewStates = repmat("keep", numel(app.lesionIndex), 1);
-            app.LesionEditStates = repmat("reset", numel(app.lesionIndex), 1);
 
-            % Prepare clean and draft lesion matrices and backup for both time points
-            app.Lesion1Clean = app.L1;
-            app.Lesion1Draft = zeros(size(app.L1));
+            % Prepare clean and draft lesion matrices and backup
             app.L1backUp = app.L1;
 
 
@@ -367,64 +361,33 @@ classdef CvsView_exported < matlab.apps.AppBase
             app.goToLastLes.Text = num2str(app.LesionIndexSpinner.Limits(2));
             app.goToFirstLes.Text = num2str(app.LesionIndexSpinner.Limits(1));
 
+            updateProgress(app,['check for previous files ...'])
+
+            cacheFile = fullfile(app.bidsDir,'derivatives','CvsView',app.subject,'cache.mat');
+            if isfile(cacheFile)
+                choice = uiconfirm(app.UIFigure,'A cache file was found. Load it or start new?','Load Cache?', ...
+                    'Options',{'Load Cache','Start New'},'DefaultOption',1,'CancelOption',2);
+                if strcmp(choice,'Load Cache')
+                    S = load(cacheFile,'cvsP'); app.cvsP = S.cvsP(:);
+                    % align length to current lesion count
+                    n = numel(app.lesionIndex);
+                    if numel(app.cvsP)~=n, app.cvsP = [app.cvsP; zeros(max(0,n-numel(app.cvsP)),1)]; app.cvsP = app.cvsP(1:n); end
+                    updateProgress(app,sprintf('Loaded cache.mat (%d entries).',numel(app.cvsP)));
+
+                    app.likelihoodSlider.Value = app.cvsP(app.currentIndex);
+                else
+                    app.cvsP = zeros(numel(app.lesionIndex),1);
+                    updateProgress(app,'Started new session (cvsP zeroed).');
+                end
+            else
+                app.cvsP = zeros(numel(app.lesionIndex),1);
+                updateProgress(app,'No cache found; initialized cvsP to zeros.');
+            end
+
+
 
              updateProgress(app,'Finished analyzing lesions')
              updateProgress(app,'Ready')
-
-        end
-
-        function updateLesionMasks(app)
-            % first check edit state and then check for review state
-
-            currentState = app.LesionReviewStates(app.currentIndex,app.currentImageIndex); % Get current review state
-
-            switch currentState
-                case 'keep'
-
-                    updateProgress(app,'saving to clean')
-                        app.Lesion1Clean(app.L1==app.currentIndex) = app.currentIndex;
-                        app.Lesion1Draft(app.L1==app.currentIndex) = 0;
-
-                case 'draft'
-                     updateProgress(app,'saving to draft')
-                        app.Lesion1Clean(app.L1==app.currentIndex) = 0;
-                        app.Lesion1Draft(app.L1==app.currentIndex) = app.currentIndex;
-
-                case 'delete'
-                    updateProgress(app,'removing from clean & draft')
-                        app.Lesion1Clean(app.L1==app.currentIndex) = 0;
-                        app.Lesion1Draft(app.L1==app.currentIndex) = 0;
-
-            end
-            updateProgress(app,['Done!'])
-        end
-
-        function updateReviewStateUI(app)              
-
-            currentState = app.LesionReviewStates(app.currentIndex,app.currentImageIndex); % Get current review state
-
-            % Find and select the corresponding button in the ButtonGroup
-            switch currentState
-                case 'keep'
-                    app.LesionReviewButtonGroup.SelectedObject = app.KeepButton;
-                    app.KeepButton.BackgroundColor = [0 1 0];
-                    app.DraftButton.BackgroundColor = [1 1 1];
-                    app.DeleteButton.BackgroundColor = [1 1 1];
-                case 'draft'
-                    app.LesionReviewButtonGroup.SelectedObject = app.DraftButton;
-                    app.KeepButton.BackgroundColor = [1 1 1];
-                    app.DraftButton.BackgroundColor = [1 1 0];
-                    app.DeleteButton.BackgroundColor = [1 1 1];
-                case 'delete'
-                    app.LesionReviewButtonGroup.SelectedObject = app.DeleteButton;
-                    app.KeepButton.BackgroundColor = [1 1 1];
-                    app.DraftButton.BackgroundColor = [1 1 1];
-                    app.DeleteButton.BackgroundColor = [1 0 0];
-                otherwise
-                    % If no state is set, default to 'keep'
-                    app.LesionReviewButtonGroup.SelectedObject = app.KeepButton;
-
-            end
 
         end
 
@@ -471,11 +434,15 @@ classdef CvsView_exported < matlab.apps.AppBase
                 app.ExportNIfTIButton.Enable = 'on';
                 app.ExportPNGButton.Enable = 'on';
 
-                app.DeleteButton.Enable = 'on';
-                app.DraftButton.Enable = 'on';
-                app.KeepButton.Enable = 'on';
-
-
+                if app.fileStatus(3)
+                    app.SWIButton.Enable = 'on';
+                end
+                if app.fileStatus(4)
+                    app.Phase.Enable = 'on';
+                end                
+                if app.fileStatus(5)
+                    app.FLAIRButton.Enable = 'on';
+                end
   
                 app.allowKey = 1;
 
@@ -530,9 +497,7 @@ classdef CvsView_exported < matlab.apps.AppBase
 
             app.ExportNIfTIButton.Enable = 'off';
             app.ExportPNGButton.Enable = 'off';
-            app.DeleteButton.Enable = 'off';
-            app.DraftButton.Enable = 'off';
-            app.KeepButton.Enable = 'off';
+
 
 
         end
@@ -587,25 +552,68 @@ classdef CvsView_exported < matlab.apps.AppBase
 
     try
         %% Load FLAIR Image
-        FlairTP1File = dir(fullfile(app.bidsDir,'derivatives',LamDir,app.subject, '*FLAIRSTAR.nii.gz'));
+        FlairStarFile = dir(fullfile(app.bidsDir,'derivatives',LamDir,app.subject, '*FLAIRSTAR.nii.gz'));
 
-        if ~isempty(FlairTP1File)
-            updateProgress(app,['Loading T2 Flair time point 1 from : ', fullfile(FlairTP1File.folder, FlairTP1File.name)]);
-            FlairPath = fullfile(FlairTP1File.folder, FlairTP1File.name);
-            app.FlairTP1 = niftiread(FlairPath);
+        if ~isempty(FlairStarFile)
+            updateProgress(app,['Loading FlairStar from : ', fullfile(FlairStarFile.folder, FlairStarFile.name)]);
+            FlairPath = fullfile(FlairStarFile.folder, FlairStarFile.name);
+            app.FlairStar = niftiread(FlairPath);
             app.FlairInfo = niftiinfo(FlairPath);
-            app.FlairTP1 = flip(app.FlairTP1,2); % Adjust orientation as needed
-            app.FlairTP1 = flip(app.FlairTP1,3);
+            app.FlairStar = flip(app.FlairStar,2); % Adjust orientation as needed
+            app.FlairStar = flip(app.FlairStar,3);
             app.fileStatus(1) = true;
-
-            app.Slider.Limits = double([min(app.FlairTP1(:)) max(app.FlairTP1(:))]);
+            app.Slider.Limits = double([min(app.FlairStar(:)) max(app.FlairStar(:))]);
+            app.Slider.Value(2) = max(app.Slider.Limits);                           
             
         else
-            updateProgress(app,['*** No baseline FLAIR found ***'])
+            updateProgress(app,['*** No FlairStar found ***'])
+        end
+                 
+        swiFile = dir(fullfile(app.bidsDir,'derivatives',LamDir,app.subject, '*swi.nii.gz'));
+
+        if ~isempty(swiFile)
+            updateProgress(app,['Loading SWI from : ', fullfile(swiFile.folder, swiFile.name)]);
+            swiPath = fullfile(swiFile.folder, swiFile.name);
+            app.swi = niftiread(swiPath);
+            app.swi = flip(app.swi,2); % Adjust orientation as needed
+            app.swi = flip(app.swi,3);
+            app.fileStatus(3) = true;
+        else
+            updateProgress(app,['*** No SWI found ***'])
         end
 
+        phaseFile = dir(fullfile(app.bidsDir,'derivatives',LamDir,app.subject, '*phase_GRE.nii.gz'));
+
+        if ~isempty(phaseFile)
+            updateProgress(app,['Loading phase image from : ', fullfile(phaseFile.folder, phaseFile.name)]);
+            phasePath = fullfile(phaseFile.folder, phaseFile.name);
+            app.phase = niftiread(phasePath);
+            app.phase = flip(app.phase,2); % Adjust orientation as needed
+            app.phase = flip(app.phase,3);
+            app.fileStatus(4) = true;
+            
+        else
+            updateProgress(app,['*** No phase found ***'])
+        end
+
+        flairFile = dir(fullfile(app.bidsDir,'derivatives',LamDir,app.subject, '*FLAIR.nii.gz'));
+
+        if ~isempty(flairFile)
+            updateProgress(app,['Loading phase image from : ', fullfile(flairFile.folder, flairFile.name)]);
+            flairPath = fullfile(flairFile.folder, flairFile.name);
+            app.flair = niftiread(flairPath);
+            app.flair = flip(app.flair,2); % Adjust orientation as needed
+            app.flair = flip(app.flair,3);
+            app.fileStatus(5) = true;
+
+            
+        else
+            updateProgress(app,['*** No flair found ***'])
+        end
+
+
         %% Load Lesion Mask
-        lesion1File = dir(fullfile(app.bidsDir,'derivatives',LamDir,app.subject, '*lesion*.nii.gz'));
+        lesion1File = dir(fullfile(app.bidsDir,'derivatives',LamDir,app.subject, '*lesion_mask.nii.gz'));
 
         if ~isempty(lesion1File)
             updateProgress(app,['Loading Lesion mask from : ', fullfile(lesion1File(1).folder, lesion1File(1).name)]);
@@ -615,10 +623,9 @@ classdef CvsView_exported < matlab.apps.AppBase
             % app.FlairInfo = niftiinfo(fullfile(lesion1File(1).folder, lesion1File(1).name));
             app.fileStatus(2) = true;
             % New file names for saving the cleaned-up version of lesions
-            app.tmpLesionNameClean1 = fullfile(app.bidsDir,'derivatives','CvsView',app.subject, strrep(lesion1File(1).name,'_mask.nii.gz','Clean_mask.nii.gz'));
-            app.tmpLesionNameDraft1 = fullfile(app.bidsDir,'derivatives','CvsView',app.subject, strrep(lesion1File(1).name,'lesion','draft'));
+            app.cvsNiftiName = fullfile(app.bidsDir,'derivatives','CvsView',app.subject, strrep(lesion1File(1).name,'lesion_mask.nii.gz','cvs_mask.nii.gz'));
         else
-            updateProgress(app,['*** No baseline lesion found ***'])
+            updateProgress(app,['*** No lesion mask found ***'])
         end
         close all;
 
@@ -634,28 +641,33 @@ classdef CvsView_exported < matlab.apps.AppBase
             scaleFactors = originalPxDim / refSpacing;
 
             % Compute new image sizes
-            newSizeFlair = round(size(app.FlairTP1) .* scaleFactors);
+            newSizeFlair = round(size(app.FlairStar) .* scaleFactors);
             newSizeLesion = round(size(app.Lesion1) .* scaleFactors);
 
-            % Resample FLAIR Image
-            app.FlairTP1 = imresize3(app.FlairTP1, newSizeFlair, 'linear');
-
-            % Update PixelDimensions in FlairInfo
-            app.FlairInfo.PixelDimensions = [refSpacing, refSpacing, refSpacing];
+            % Resample images
+            app.FlairStar = imresize3(app.FlairStar, newSizeFlair, 'linear');
+            if app.fileStatus(3)
+                app.swi = imresize3(app.swi, newSizeFlair, 'linear');
+            end
+            if app.fileStatus(4)
+                app.phase = imresize3(app.phase, newSizeFlair, 'linear');
+            end
+            if app.fileStatus(5)
+                app.flair = imresize3(app.flair, newSizeFlair, 'linear');
+            end
 
             % Resample Lesion Mask using 'nearest' to preserve labels
             app.Lesion1 = imresize3(app.Lesion1, newSizeLesion, 'nearest');
 
-            % Assign to app.whichT2 and app.whichLes for consistency with existing code
-            app.whichT2 = app.FlairTP1;
+            
             app.whichLes = app.Lesion1;
 
-            % Update ImageSize in FlairInfo
-            app.FlairInfo.ImageSize = size(app.FlairTP1);
+
 
             %% Pad the Third Dimension 
-            desired_z_size = app.FlairInfo.ImageSize(1);
-            current_z_size = size(app.whichT2, 3); % 
+            updateProgress(app,['preparing data ...'])
+            desired_z_size = size(app.FlairStar,1);
+            current_z_size = size(app.FlairStar, 3); % 
 
             if current_z_size < desired_z_size
                 pad_total = desired_z_size - current_z_size; % 
@@ -668,21 +680,26 @@ classdef CvsView_exported < matlab.apps.AppBase
                 end
 
                 % Create padding arrays
-                padding_flair = zeros(size(app.whichT2,1), size(app.whichT2,2), pad_before);
-                padding_lesion = zeros(size(app.whichLes,1), size(app.whichLes,2), pad_before);
+                padding = zeros(size(app.whichLes,1), size(app.whichLes,2), pad_before);
+                padding_after = zeros(size(app.FlairStar,1), size(app.FlairStar,2), pad_after);
 
-                padding_flair_after = zeros(size(app.whichT2,1), size(app.whichT2,2), pad_after);
-                padding_lesion_after = zeros(size(app.whichLes,1), size(app.whichLes,2), pad_after);
-
-                % Pad FLAIR Image
-                app.whichT2 = cat(3, padding_flair, app.whichT2, padding_flair_after);
+                % Pad Image
+                app.FlairStar = cat(3, padding, app.FlairStar, padding_after);
+                if app.fileStatus(3)
+                    app.swi = cat(3, padding, app.swi, padding_after);
+                end
+                if app.fileStatus(4)
+                    app.phase = cat(3, padding, app.phase, padding_after);
+                end
+                if app.fileStatus(5)
+                    app.flair = cat(3, padding, app.flair, padding_after);
+                end                
 
                 % Pad Lesion Mask
-                app.whichLes = cat(3, padding_lesion, app.whichLes, padding_lesion_after);
+                app.whichLes = cat(3, padding, app.whichLes, padding_after);
                 app.Lesion1 = app.whichLes;
 
-                % Update ImageSize after padding
-                app.FlairInfo.ImageSize = size(app.whichT2);
+                app.whichT2 = app.FlairStar;
                 
                 app.x0.Limits = [1 size(app.whichT2, 3)];
                 app.y0.Limits = [1 size(app.whichT2, 2)];
@@ -691,6 +708,10 @@ classdef CvsView_exported < matlab.apps.AppBase
                 app.x0.Value = round(size(app.whichT2, 3)/2);
                 app.y0.Value = round(size(app.whichT2, 2)/2);
                 app.z0.Value = round(size(app.whichT2, 1)/2);
+
+                
+
+                updateProgress(app,['done'])
 
 
             elseif current_z_size > desired_z_size
@@ -701,6 +722,7 @@ classdef CvsView_exported < matlab.apps.AppBase
         %% Proceed with Existing Workflow
         app.currentImageIndex = 1;
         updateImage(app);
+
         close all;
 
         %% Start Computation or Further Processing
@@ -715,206 +737,71 @@ classdef CvsView_exported < matlab.apps.AppBase
         % Value changed function: LesionIndexSpinner
         function LesionIndexSpinnerValueChanged(app, event)
             checkWhichIndexList(app);
-             updateReviewStateUI(app);
             updateImage(app);
+            app.likelihoodSlider.Value = app.cvsP(app.currentIndex,1);
 
-        end
-
-        % Value changing function: OverlayAlpha
-        function OverlayAlphaValueChanging(app, event)
-            alphaValue = app.OverlayAlpha.Value; % Get the current value of the slider
-            if isfield(app, 'hLes') && isvalid(app.hLes) % Check if the overlay handle exists and is valid
-                set(app.hLes, 'AlphaData', alphaValue); % Adjust the overlay's alpha transparency
-            end
-            updateImage(app);
-        end
-
-        % Value changed function: OverlayAlpha
-        function OverlayAlphaValueChanged(app, event)
-            alphaValue = app.OverlayAlpha.Value; % Get the current value of the slider
-            if isfield(app, 'hLes') && isvalid(app.hLes) % Check if the overlay handle exists and is valid
-                set(app.hLes, 'AlphaData', alphaValue); % Adjust the overlay's alpha transparency
-            end
-            updateImage(app);            
-        end
-
-        % Selection changed function: LesionReviewButtonGroup
-        function LesionReviewButtonGroupSelectionChanged(app, event)
-            selectedButton = app.LesionReviewButtonGroup.SelectedObject.Text;
-            % Default all buttons to white background
-            % Update the review state for the current lesion
-            app.LesionReviewStates(app.currentIndex,app.currentImageIndex) = lower(selectedButton);
-            
-            % Update lesion masks based on the selected review state
-            updateReviewStateUI(app);
-
-          
-            updateProgress(app,sprintf('*** CVS - %d out of %d lesions ***',sum(contains(app.LesionReviewStates(:, app.currentImageIndex), {'keep'})),numel(app.lesionIndex)))
-          
         end
 
         % Button pushed function: ExportNIfTIButton
         function ExportNIfTIButtonPushed(app, event)
-            % Define the folder path
-            folder = fullfile(app.bidsDir, 'derivatives', 'CvsView', app.subject);
-            if ~isfolder(folder)
-                mkdir(folder);
-            end
+            folder = fullfile(app.bidsDir,'derivatives','CvsView',app.subject);
+            if ~isfolder(folder), mkdir(folder); end
 
-            % Convert lesion data to single precision logical
-            app.Lesion1Clean = single(logical(app.Lesion1Clean));
-            app.Lesion1Draft = single(logical(app.Lesion1Draft));
-
-            % Initialize waitbar
-            totalSteps = 3; % Total number of steps
-            hWaitbar = waitbar(0, '*** Please wait, saving nii.gz files ***', 'Name', 'Saving NIfTI Files');
+            % quantize to 2 decimals and build volume
+            cvsPq = min(1, max(0, round(app.cvsP(:), 2)));
+            lut   = [0; cvsPq];
+            app.cvsMat = single(lut(double(app.L1raw)+1));
 
             try
-                % Step 1: Saving Lesion1Clean
-                waitbar(1/totalSteps, hWaitbar, 'Saving Lesion1Clean ...');
-                updateProgress(app, 'Saving Lesion1Clean ...'); % Optional: Update textual progress
+                updateProgress(app,'Exporting NIfTI ...');
 
-                % Ensure the folder for Lesion1Clean exists
-                folderPathClean = fileparts(app.tmpLesionNameClean1);
-                if ~isfolder(folderPathClean)
-                    mkdir(folderPathClean);
-                end
+                % write
+                niftiwrite(app.cvsMat, app.cvsNiftiName, app.FlairInfo, 'Compressed', true);
+                updateProgress(app,'NIfTI exported!');
 
-                % Save Lesion1Clean
-                niftiwrite(app.Lesion1Clean, app.tmpLesionNameClean1, app.FlairInfo, 'Compressed', true);
-
-                % Step 2: Saving Lesion1Draft
-                waitbar(2/totalSteps, hWaitbar, 'Saving Lesion1Draft ...');
-                updateProgress(app, 'Saving Lesion1Draft ...'); % Optional: Update textual progress
-
-                % Ensure the folder for Lesion1Draft exists
-                folderPathDraft = fileparts(app.tmpLesionNameDraft1);
-                if ~isfolder(folderPathDraft)
-                    mkdir(folderPathDraft);
-                end
-
-                % Save Lesion1Draft
-                niftiwrite(app.Lesion1Draft, app.tmpLesionNameDraft1, app.FlairInfo, 'Compressed', true);
-
-                % Step 3: Completion
-                waitbar(3/totalSteps, hWaitbar, 'Done!');
-                updateProgress(app, 'Done!'); % Optional: Update textual progress
+                % also save cvsP cache
+                cvsP = cvsPq; 
+                save(fullfile(folder,'cache.mat'),'cvsP','-v7');
+                updateProgress(app,'cache.mat exported!');
 
             catch ME
-                % If an error occurs, close the waitbar and rethrow the error
-                close(hWaitbar);
                 rethrow(ME);
             end
 
-            % Close the waitbar after all steps are done
-            close(hWaitbar);
         end
 
         % Button pushed function: ExportPNGButton
         function ExportPNGButtonPushed(app, event)
 
             % Define a subfolder to store exported images
-            exportFolder = fullfile(app.bidsDir,'derivatives','CvsView',app.subject);
+            exportFolder = fullfile(app.bidsDir,'derivatives','CvsView',app.subject); if ~exist(exportFolder,'dir'), mkdir(exportFolder); end
 
-            % Create the folder if it doesn't exist
-            if ~exist(exportFolder, 'dir')
-                mkdir(exportFolder);
+            % select top-6 by probability
+            [~,ord] = sort(app.cvsP(:),'descend'); lesions = ord(1:min(6,numel(app.cvsP)));
+
+            % ----- text report -----
+            P = 100*app.cvsP(:);
+            totalVolML = sum(app.lesionVol)*prod(app.FlairInfo.PixelDimensions)/1000;
+            edges = [0 20 40 60 80 100+eps]; counts = histcounts(P,edges);        % [0-20),[20-40),...,[80-100]
+            fid = fopen(fullfile(exportFolder,[app.subject '.txt']),'w');
+            fprintf(fid,'Subject: %s\nTotal lesions: %d\nTotal volume: %.2f ml\n',app.subject,numel(P),totalVolML);
+            lows = [80 60 40 20 0]; highs = [100 80 60 40 20]; cc = fliplr(counts);
+            for ii = 1:numel(lows), fprintf(fid,'%d-%d%%: %d lesions\n',lows(ii),highs(ii),cc(ii)); end
+            fprintf(fid,'Exported PNGs (top-%d by probability): %s\n',numel(lesions),strjoin(compose('%d',lesions.'),', '));
+            fclose(fid);
+
+            % ----- PNG export -----
+            if isempty(lesions), uialert(app.UIFigure,'No lesions to export.','Export'); return; end
+            wb = waitbar(0,'Exporting...');
+            for ii = 1:numel(lesions)
+                idx = lesions(ii); app.LesionIndexSpinner.Value = idx; LesionIndexSpinnerValueChanged(app,[]); updateImage(app);
+                fn = sprintf('%s_CVS_%d_%d%%.png',app.subject,idx,round(P(idx)));
+                try exportgraphics(app.UIAxes,fullfile(exportFolder,fn),'Resolution',300); catch f=getframe(app.UIAxes); imwrite(f.cdata,fullfile(exportFolder,fn)); end
+                waitbar(ii/numel(lesions),wb);
             end
-
-            % Identify lesions marked as "yes" in LesionReviewStates
-            % Assuming LesionReviewStates is a 2D array where rows correspond to lesions
-            % and columns correspond to images or views. Adjust indexing as necessary.
-            % For example, if app.LesionReviewStates is a table or another structure,
-            % modify the following line accordingly.
-
-            % Here, we assume that "yes" is stored as lowercase 'yes' in the states
-            % and that each row represents a lesion. Adjust if your data structure is different.
-            lesionsToExport = find(contains(app.LesionReviewStates(:, app.currentImageIndex), {'keep','draft'}));
-
-            % Check if there are any lesions to export
-            if isempty(lesionsToExport)
-                uialert(app.UIFigure, 'No lesions marked as "keep" to export.', 'Export Completed');
-                return;
-            end
-
-            totalVolume =  sum(app.lesionVol)*app.FlairInfo.PixelDimensions(1)*app.FlairInfo.PixelDimensions(2)*app.FlairInfo.PixelDimensions(3)./1000;
-            totalLesion = size(app.LesionReviewStates,1);
-            % --- Write Lesion Statistics to a .txt File ---
-
-            % Define the text filename
-            txtFilename = sprintf('%s.txt', app.subject);
-            txtFilepath = fullfile(exportFolder, txtFilename);
-
-            % Prepare the content to write
-            txtContent = sprintf(['Subject ID: %s\n' ...
-                'Total Number of Lesions: %d\n' ...
-                'Total Lesion Volume: %.2f ml\n' ...
-                'CVS - %d out of %d lesions\n'], ...
-                app.subject, totalLesion, totalVolume,sum(contains(app.LesionReviewStates(:, app.currentImageIndex), {'keep'})),numel(app.lesionIndex));
-
-            % Write the content to the text file
-            try
-                fid = fopen(txtFilepath, 'w');
-                if fid == -1
-                    error('Failed to create text file: %s', txtFilepath);
-                end
-                fprintf(fid, '%s', txtContent);
-                fclose(fid);
-            catch ME
-                uialert(app.UIFigure, sprintf('Failed to write lesion statistics to text file.\nError: %s', ME.message), 'Export Completed', 'Icon', 'warning');
-                return;
-            end
-
-            % Initialize a waitbar to show progress
-            wb = waitbar(0, 'Exporting Lesion Images...', 'Name', 'Export Progress');
-
-            % Loop through each selected lesion and export the image
-            for i = 1:length(lesionsToExport)
-                lesionIdx = lesionsToExport(i);
-
-                % Update the currentIndex to the lesion to export
-                app.LesionIndexSpinner.Value = lesionIdx;
-                LesionIndexSpinnerValueChanged(app, []);
-
-                % Update the UIAxes with the current lesion
-                updateImage(app);
-
-                % Pause briefly to ensure the UI updates (optional, may help with rendering)
-                pause(0.1);
-
-                % Define the filename with lesion index
-
-                if strcmp(app.LesionReviewStates(lesionIdx, app.currentImageIndex), 'keep')
-                    filename = sprintf('%s_CVS_%d.png', app.subject,lesionIdx);
-                else
-                    filename = sprintf('%s_maybe_%d.png', app.subject,lesionIdx);
-                end
-
-                filepath = fullfile(exportFolder, filename);
-
-                % Capture the UIAxes as a frame
-                % Option 1: Using exportgraphics (recommended for higher quality)
-                try
-                    exportgraphics(app.UIAxes, filepath, 'Resolution', 300);
-                catch ME
-                    % If exportgraphics is not available, use alternative method
-                    % Option 2: Using getframe and imwrite
-                    frame = getframe(app.UIAxes);
-                    imwrite(frame.cdata, filepath);
-                end
-
-                % Update the waitbar
-                waitbar(i / length(lesionsToExport), wb, sprintf('Exporting Lesion %d of %d...', i, length(lesionsToExport)));
-            end
-
-            % Close the waitbar
             close(wb);
+            uialert(app.UIFigure,sprintf('Exported %d lesions to %s.',numel(lesions),exportFolder),'Export Completed');
 
-            % Notify the user upon completion with an 'info' icon
-            uialert(app.UIFigure, ...
-                sprintf('Exported %d lesion(s) to %s.', length(lesionsToExport), exportFolder), ...
-                'Export Completed', ...
-                'Icon', 'info');
         end
 
         % Key press function: UIFigure
@@ -1047,11 +934,32 @@ classdef CvsView_exported < matlab.apps.AppBase
 
         end
 
+        % Value changed function: likelihoodSlider
+        function likelihoodSliderValueChanged(app, event)
+
+            val = app.likelihoodSlider.Value;
+            val = max(0,min(1,val));                 % clamp to [0,1]
+            app.cvsP(app.currentIndex,1) = val;
+
+            pct = round(val*100);
+            updateProgress(app, sprintf('Lesion #%d – %d%% chance of containing a vein', app.currentIndex, pct));
+
+            yesCount = sum(app.cvsP >= 0.5);
+            totalLesions = numel(app.cvsP);
+            updateProgress(app, sprintf('%d out of %d lesions likely contain a vein', yesCount, totalLesions));
+
+        end
+
+        % Value changed function: CheckBox
+        function CheckBoxValueChanged(app, event)
+            app.OverlayAlpha = app.CheckBox.Value;
+            updateImage(app);
+        end
+
         % Value changed function: Slider
         function SliderValueChanged(app, event)
-
-
             updateImage(app); 
+            
         end
 
         % Value changing function: Slider
@@ -1060,6 +968,45 @@ classdef CvsView_exported < matlab.apps.AppBase
             app.Slider.Value(2) = event.Value(2);
 
             updateImage(app); 
+        end
+
+        % Selection changed function: ButtonGroup
+        function ButtonGroupSelectionChanged(app, event)
+            switch app.ButtonGroup.SelectedObject.Text
+                case 'FlairStar'
+                    app.whichT2 = app.FlairStar;
+                    colorrange(:,1) = app.Slider.Limits;
+                    app.Slider.Limits = colorrange(:,1);
+                    app.Slider.Value(2) = max(app.Slider.Limits);   
+                case 'FLAIR'
+                    app.whichT2 = app.flair;
+                    app.Slider.Limits = double([min(app.FlairStar(:)) max(app.FlairStar(:))]);
+                    app.Slider.Value(2) = max(app.Slider.Limits);                     
+                case 'SWI'
+                    app.whichT2 = app.swi;
+                    app.Slider.Limits = double([min(app.FlairStar(:)) max(app.FlairStar(:))]);
+                    app.Slider.Value(2) = max(app.Slider.Limits);                     
+                case 'Phase'
+                    app.whichT2 = app.phase;
+                    app.Slider.Limits = double([min(app.FlairStar(:)) max(app.FlairStar(:))]);
+                    app.Slider.Value(2) = max(app.Slider.Limits);                     
+            end
+            updateImage(app); 
+        end
+
+        % Button down function: ButtonGroup
+        function ButtonGroupButtonDown(app, event)
+            switch app.ButtonGroup.SelectedObject.Text
+                case 'FlairStar'
+                    app.whichT2 = app.FlairStar;
+                case 'FLAIR'
+                    app.whichT2 = app.flair;
+                case 'SWI'
+                    app.whichT2 = app.swi;
+                case 'Phase'
+                    app.whichT2 = app.phase;
+            end
+            updateImage(app);  
         end
     end
 
@@ -1086,6 +1033,7 @@ classdef CvsView_exported < matlab.apps.AppBase
 
             % Create UIAxes
             app.UIAxes = uiaxes(app.LeftPanel);
+            title(app.UIAxes, 'PP')
             app.UIAxes.Toolbar.Visible = 'off';
             app.UIAxes.Position = [32 162 1005 668];
 
@@ -1095,7 +1043,7 @@ classdef CvsView_exported < matlab.apps.AppBase
             app.ExportPNGButton.FontSize = 30;
             app.ExportPNGButton.FontWeight = 'bold';
             app.ExportPNGButton.Tooltip = {'Generate PNG of CSV lesion'};
-            app.ExportPNGButton.Position = [161 39 118 82];
+            app.ExportPNGButton.Position = [201 39 118 82];
             app.ExportPNGButton.Text = {'Export '; 'PNG'};
 
             % Create x0
@@ -1137,7 +1085,7 @@ classdef CvsView_exported < matlab.apps.AppBase
             app.ProgressTextArea.Editable = 'off';
             app.ProgressTextArea.FontColor = [0.902 0.902 0.902];
             app.ProgressTextArea.BackgroundColor = [0 0 0];
-            app.ProgressTextArea.Position = [718 46 330 70];
+            app.ProgressTextArea.Position = [667 38 370 78];
 
             % Create ExportNIfTIButton
             app.ExportNIfTIButton = uibutton(app.LeftPanel, 'push');
@@ -1145,7 +1093,7 @@ classdef CvsView_exported < matlab.apps.AppBase
             app.ExportNIfTIButton.WordWrap = 'on';
             app.ExportNIfTIButton.FontSize = 30;
             app.ExportNIfTIButton.FontWeight = 'bold';
-            app.ExportNIfTIButton.Position = [291 39 107 82];
+            app.ExportNIfTIButton.Position = [331 39 107 82];
             app.ExportNIfTIButton.Text = {'Export '; 'NIfTI'};
 
             % Create LoadBIDSButton
@@ -1154,19 +1102,8 @@ classdef CvsView_exported < matlab.apps.AppBase
             app.LoadBIDSButton.FontSize = 30;
             app.LoadBIDSButton.FontWeight = 'bold';
             app.LoadBIDSButton.FontAngle = 'italic';
-            app.LoadBIDSButton.Position = [55 39 94 82];
+            app.LoadBIDSButton.Position = [95 39 94 82];
             app.LoadBIDSButton.Text = {'Load'; 'BIDS'};
-
-            % Create OverlayAlpha
-            app.OverlayAlpha = uislider(app.LeftPanel);
-            app.OverlayAlpha.Limits = [0 1];
-            app.OverlayAlpha.MajorTicks = [];
-            app.OverlayAlpha.ValueChangedFcn = createCallbackFcn(app, @OverlayAlphaValueChanged, true);
-            app.OverlayAlpha.ValueChangingFcn = createCallbackFcn(app, @OverlayAlphaValueChanging, true);
-            app.OverlayAlpha.MinorTicks = [0 0.035 0.07 0.105 0.14 0.175 0.21 0.245 0.28 0.315 0.35 0.385 0.42 0.455 0.49 0.525 0.56 0.595 0.63 0.665 0.7 0.735 0.77 0.805 0.84 0.875 0.91 0.945 1];
-            app.OverlayAlpha.Tooltip = {'Adjust lesion mask transparency'};
-            app.OverlayAlpha.Position = [718 148 265 3];
-            app.OverlayAlpha.Value = 1;
 
             % Create LesionIndexSpinner
             app.LesionIndexSpinner = uispinner(app.LeftPanel);
@@ -1196,49 +1133,76 @@ classdef CvsView_exported < matlab.apps.AppBase
             app.goToFirstLes.Position = [801 849 39 42];
             app.goToFirstLes.Text = '<';
 
-            % Create SliderLabel
-            app.SliderLabel = uilabel(app.LeftPanel);
-            app.SliderLabel.HorizontalAlignment = 'right';
-            app.SliderLabel.Position = [13 140 36 22];
-            app.SliderLabel.Text = 'Slider';
+            % Create likelihoodSlider
+            app.likelihoodSlider = uislider(app.LeftPanel);
+            app.likelihoodSlider.Limits = [0 1];
+            app.likelihoodSlider.MajorTicks = [];
+            app.likelihoodSlider.ValueChangedFcn = createCallbackFcn(app, @likelihoodSliderValueChanged, true);
+            app.likelihoodSlider.MinorTicks = [0 0.0125 0.025 0.0375 0.05 0.0625 0.075 0.0875 0.1 0.1125 0.125 0.1375 0.15 0.1625 0.175 0.1875 0.2 0.2125 0.225 0.2375 0.25 0.2625 0.275 0.2875 0.3 0.3125 0.325 0.3375 0.35 0.3625 0.375 0.3875 0.4 0.4125 0.425 0.4375 0.45 0.4625 0.475 0.4875 0.5 0.5125 0.525 0.5375 0.55 0.5625 0.575 0.5875 0.6 0.6125 0.625 0.6375 0.65 0.6625 0.675 0.6875 0.7 0.7125 0.725 0.7375 0.75 0.7625 0.775 0.7875 0.8 0.8125 0.825 0.8375 0.85 0.8625 0.875 0.8875 0.9 0.9125 0.925 0.9375 0.95 0.9625 0.975 0.9875 1];
+            app.likelihoodSlider.FontSize = 8;
+            app.likelihoodSlider.Position = [689 147 335 3];
+
+            % Create CheckBox
+            app.CheckBox = uicheckbox(app.LeftPanel);
+            app.CheckBox.ValueChangedFcn = createCallbackFcn(app, @CheckBoxValueChanged, true);
+            app.CheckBox.Text = '';
+            app.CheckBox.Position = [983 855 30 22];
+            app.CheckBox.Value = true;
 
             % Create Slider
             app.Slider = uislider(app.LeftPanel, 'range');
+            app.Slider.MajorTicks = [];
             app.Slider.ValueChangedFcn = createCallbackFcn(app, @SliderValueChanged, true);
             app.Slider.ValueChangingFcn = createCallbackFcn(app, @SliderValueChanging, true);
+            app.Slider.MinorTicks = [0 2 4 6 8 10 12 14 16 18 20 22 24 26 28 30 32 34 36 38 40 42 44 46 48 50 52 54 56 58 60 62 64 66 68 70 72 74 76 78 80 82 84 86 88 90 92 94 96 98 100];
             app.Slider.Tooltip = {'Change the color map limit for FLAIR*'};
-            app.Slider.Position = [71 149 427 3];
+            app.Slider.Position = [104 146 325 3];
 
-            % Create LesionReviewButtonGroup
-            app.LesionReviewButtonGroup = uibuttongroup(app.LeftPanel);
-            app.LesionReviewButtonGroup.SelectionChangedFcn = createCallbackFcn(app, @LesionReviewButtonGroupSelectionChanged, true);
-            app.LesionReviewButtonGroup.BackgroundColor = [0 0 0];
-            app.LesionReviewButtonGroup.Position = [423 39 281 84];
+            % Create AdjustcontrastLabel
+            app.AdjustcontrastLabel = uilabel(app.LeftPanel);
+            app.AdjustcontrastLabel.FontAngle = 'italic';
+            app.AdjustcontrastLabel.FontColor = [1 1 1];
+            app.AdjustcontrastLabel.Position = [210 127 86 22];
+            app.AdjustcontrastLabel.Text = 'Adjust contrast';
 
-            % Create KeepButton
-            app.KeepButton = uitogglebutton(app.LesionReviewButtonGroup);
-            app.KeepButton.Tooltip = {'(s) This lesion has CVS'};
-            app.KeepButton.Text = 'Keep';
-            app.KeepButton.FontSize = 25;
-            app.KeepButton.FontWeight = 'bold';
-            app.KeepButton.Position = [9 20 77 40];
-            app.KeepButton.Value = true;
+            % Create HowlikelyisthereaveinLabel
+            app.HowlikelyisthereaveinLabel = uilabel(app.LeftPanel);
+            app.HowlikelyisthereaveinLabel.FontSize = 18;
+            app.HowlikelyisthereaveinLabel.FontAngle = 'italic';
+            app.HowlikelyisthereaveinLabel.FontColor = [1 1 1];
+            app.HowlikelyisthereaveinLabel.Position = [760 123 212 24];
+            app.HowlikelyisthereaveinLabel.Text = 'How likely is there a vein?';
 
-            % Create DraftButton
-            app.DraftButton = uitogglebutton(app.LesionReviewButtonGroup);
-            app.DraftButton.Tooltip = {'(e) This lesion might have CVS'};
-            app.DraftButton.Text = 'Draft';
-            app.DraftButton.FontSize = 25;
-            app.DraftButton.FontWeight = 'bold';
-            app.DraftButton.Position = [96 20 75 40];
+            % Create ButtonGroup
+            app.ButtonGroup = uibuttongroup(app.LeftPanel);
+            app.ButtonGroup.SelectionChangedFcn = createCallbackFcn(app, @ButtonGroupSelectionChanged, true);
+            app.ButtonGroup.BackgroundColor = [0 0 0];
+            app.ButtonGroup.ButtonDownFcn = createCallbackFcn(app, @ButtonGroupButtonDown, true);
+            app.ButtonGroup.Position = [496 42 128 98];
 
-            % Create DeleteButton
-            app.DeleteButton = uitogglebutton(app.LesionReviewButtonGroup);
-            app.DeleteButton.Tooltip = {'(d) This lesion does not have CVS'};
-            app.DeleteButton.Text = 'Delete';
-            app.DeleteButton.FontSize = 25;
-            app.DeleteButton.FontWeight = 'bold';
-            app.DeleteButton.Position = [181 20 92 40];
+            % Create FlairStarButton
+            app.FlairStarButton = uitogglebutton(app.ButtonGroup);
+            app.FlairStarButton.Text = 'FlairStar';
+            app.FlairStarButton.Position = [14 69 100 23];
+            app.FlairStarButton.Value = true;
+
+            % Create SWIButton
+            app.SWIButton = uitogglebutton(app.ButtonGroup);
+            app.SWIButton.Enable = 'off';
+            app.SWIButton.Text = 'SWI';
+            app.SWIButton.Position = [14 48 100 23];
+
+            % Create FLAIRButton
+            app.FLAIRButton = uitogglebutton(app.ButtonGroup);
+            app.FLAIRButton.Enable = 'off';
+            app.FLAIRButton.Text = 'FLAIR';
+            app.FLAIRButton.Position = [14 27 100 23];
+
+            % Create Phase
+            app.Phase = uitogglebutton(app.ButtonGroup);
+            app.Phase.Enable = 'off';
+            app.Phase.Text = 'Phase';
+            app.Phase.Position = [14 5 100 23];
 
             % Show the figure after all components are created
             app.UIFigure.Visible = 'on';
