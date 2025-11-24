@@ -67,8 +67,12 @@ classdef CvsView_exported < matlab.apps.AppBase
 
 
         % Visualization and UI elements
-        sizeZoom double = 26; % Zoom window size for detailed lesion viewing
-        colorrange = zeros(4,2);
+        sizeZoom double = 52; % Zoom window size for detailed lesion viewing
+        
+        % Store [limitMin, limitMax, valMin, valMax] for each modality
+        % 1=FlairStar, 2=SWI, 3=FLAIR, 4=Phase
+        imgSettings = zeros(4,4); 
+        currModality = 1;
 
         hLes % Placeholder for lesion visualization handles
         fig % Main figure for export
@@ -77,6 +81,7 @@ classdef CvsView_exported < matlab.apps.AppBase
 
         hLes_other 
         hLes_selected 
+
 
         % Lesion processing and review properties
         cvsMat % 3D matrix - Cleaned lesion image at time point 1
@@ -161,13 +166,14 @@ classdef CvsView_exported < matlab.apps.AppBase
             botles_selected = [les_selected21 les_selected22 les_selected23];
 
             % Extract and resize zoomed-in selected lesion images for the top row
-            img11_selected = imresize(selectedMask(max(1, app.z0.Value - app.sizeZoom):min(end, app.z0.Value + app.sizeZoom), ...
+            % Use the 2D slices (les_selected21/22/23) as source, not the 3D volume
+            img11_selected = imresize(les_selected21(max(1, app.z0.Value - app.sizeZoom):min(end, app.z0.Value + app.sizeZoom), ...
                 max(1, app.y0.Value - app.sizeZoom):min(end, app.y0.Value + app.sizeZoom)), ...
                 [size(botrow,1) size(botrow,1)], 'nearest');
-            img12_selected = imresize(selectedMask(max(1, app.z0.Value - app.sizeZoom):min(end, app.z0.Value + app.sizeZoom), ...
+            img12_selected = imresize(les_selected22(max(1, app.z0.Value - app.sizeZoom):min(end, app.z0.Value + app.sizeZoom), ...
                 max(1, app.x0.Value - app.sizeZoom):min(end, app.x0.Value + app.sizeZoom)), ...
                 [size(botrow,1) size(botrow,1)], 'nearest');
-            img13_selected = imresize(selectedMask(max(1, app.x0.Value - app.sizeZoom):min(end, app.x0.Value + app.sizeZoom), ...
+            img13_selected = imresize(les_selected23(max(1, app.x0.Value - app.sizeZoom):min(end, app.x0.Value + app.sizeZoom), ...
                 max(1, app.y0.Value - app.sizeZoom):min(end, app.y0.Value + app.sizeZoom)), ...
                 [size(botrow,1) size(botrow,1)], 'nearest');
 
@@ -188,13 +194,14 @@ classdef CvsView_exported < matlab.apps.AppBase
             botles_other = [les_other21 les_other22 les_other23];
 
             % Extract and resize zoomed-in other lesions images for the top row
-            img11_other = imresize(otherMask(max(1, app.z0.Value - app.sizeZoom):min(end, app.z0.Value + app.sizeZoom), ...
+            % Use the 2D slices (les_other21/22/23) as source, not the 3D volume
+            img11_other = imresize(les_other21(max(1, app.z0.Value - app.sizeZoom):min(end, app.z0.Value + app.sizeZoom), ...
                 max(1, app.y0.Value - app.sizeZoom):min(end, app.y0.Value + app.sizeZoom)), ...
                 [size(botrow,1) size(botrow,1)], 'nearest');
-            img12_other = imresize(otherMask(max(1, app.z0.Value - app.sizeZoom):min(end, app.z0.Value + app.sizeZoom), ...
+            img12_other = imresize(les_other22(max(1, app.z0.Value - app.sizeZoom):min(end, app.z0.Value + app.sizeZoom), ...
                 max(1, app.x0.Value - app.sizeZoom):min(end, app.x0.Value + app.sizeZoom)), ...
                 [size(botrow,1) size(botrow,1)], 'nearest');
-            img13_other = imresize(otherMask(max(1, app.x0.Value - app.sizeZoom):min(end, app.x0.Value + app.sizeZoom), ...
+            img13_other = imresize(les_other23(max(1, app.x0.Value - app.sizeZoom):min(end, app.x0.Value + app.sizeZoom), ...
                 max(1, app.y0.Value - app.sizeZoom):min(end, app.y0.Value + app.sizeZoom)), ...
                 [size(botrow,1) size(botrow,1)], 'nearest');
 
@@ -210,13 +217,13 @@ classdef CvsView_exported < matlab.apps.AppBase
             img_selected = [toples_selected; botles_selected];
             img_selected = double(img_selected > 0.5);
             img_selected = bwperim(img_selected, 8);
-            img_selected = imdilate(bwperim(img_selected, 8), strel('disk', 1));
+            % img_selected = imdilate(bwperim(img_selected, 8), strel('disk', 1)); % Thinner line
 
             % Other Lesions Overlay
             img_other = [toples_other; botles_other];
             img_other = double(img_other > 0.5);
             img_other = bwperim(img_other, 8);
-            img_other = imdilate(bwperim(img_other, 8), strel('disk', 1));
+            % img_other = imdilate(bwperim(img_other, 8), strel('disk', 1)); % Thinner line
 
             % --- Create Colored Overlays ---
 
@@ -238,11 +245,12 @@ classdef CvsView_exported < matlab.apps.AppBase
             set(app.hLes_selected, 'AlphaData', double(img_selected) * app.OverlayAlpha); % Ensure you have a SelectedOverlayAlpha property
 
             % --- Draw Zoom Rectangles (Optional) ---
-
-            % Calculate starting positions for rectangles
-            startXImg22 = size(img21, 2) + 1;
-            startXImg23 = startXImg22 + size(img22, 2);
-            startY = size(img21, 1) + 1;
+            
+            if app.CheckBox.Value
+                % Calculate starting positions for rectangles
+                startXImg22 = size(img21, 2) + 1;
+                startXImg23 = startXImg22 + size(img22, 2);
+                startY = size(img21, 1) + 1;
 
             % Define the zoom area size
             zoomAreaSize = 2 * app.sizeZoom; % The size of the zoomed area
@@ -264,7 +272,7 @@ classdef CvsView_exported < matlab.apps.AppBase
                 startY + app.x0.Value - app.sizeZoom, ...
                 zoomAreaSize, zoomAreaSize], ...
                 'EdgeColor', 'w', 'LineWidth', 1, 'Parent', app.UIAxes);
-
+            
             hold(app.UIAxes, 'off');
 
         end
@@ -562,14 +570,13 @@ classdef CvsView_exported < matlab.apps.AppBase
             app.FlairStar = flip(app.FlairStar,2); % Adjust orientation as needed
             app.FlairStar = flip(app.FlairStar,3);
             app.fileStatus(1) = true;
-            app.Slider.Limits = double([min(app.FlairStar(:)) max(app.FlairStar(:))]);
-            app.Slider.Value(2) = max(app.Slider.Limits);                           
+            % Slider initialization is now handled after all images are processed
             
         else
             updateProgress(app,['*** No FlairStar found ***'])
         end
                  
-        swiFile = dir(fullfile(app.bidsDir,'derivatives',LamDir,app.subject, '*swi.nii.gz'));
+        swiFile = dir(fullfile(app.bidsDir,'rawdata',app.subject,'ses-01','swi', '*ses-01_swi.nii.gz'));
 
         if ~isempty(swiFile)
             updateProgress(app,['Loading SWI from : ', fullfile(swiFile.folder, swiFile.name)]);
@@ -582,7 +589,7 @@ classdef CvsView_exported < matlab.apps.AppBase
             updateProgress(app,['*** No SWI found ***'])
         end
 
-        phaseFile = dir(fullfile(app.bidsDir,'derivatives',LamDir,app.subject, '*phase_GRE.nii.gz'));
+        phaseFile = dir(fullfile(app.bidsDir,'rawdata',app.subject,'ses-01','swi', '*phase*.nii.gz'));
 
         if ~isempty(phaseFile)
             updateProgress(app,['Loading phase image from : ', fullfile(phaseFile.folder, phaseFile.name)]);
@@ -719,8 +726,37 @@ classdef CvsView_exported < matlab.apps.AppBase
             end
         end
 
+        %% Compute Image Stats (Limits & Default 5th-95th Percentile Range)
+        updateProgress(app, 'Computing image stats...');
+        imgs = {app.FlairStar, app.swi, app.flair, app.phase};
+        % Check which are loaded
+        loadedIndices = [1, 3, 5, 4]; % Indices in app.fileStatus matching the order above
+        
+        for k = 1:4
+            if app.fileStatus(loadedIndices(k)) && ~isempty(imgs{k})
+                % Compute Limits (Min/Max)
+                d = double(imgs{k});
+                app.imgSettings(k, 1) = min(d(:));
+                app.imgSettings(k, 2) = max(d(:));
+                
+                % Compute Default Range (5th and 95th percentile)
+                % Subsample for speed
+                d_sub = d(1:20:end); 
+                p = prctile(d_sub, [5 95]);
+                app.imgSettings(k, 3) = p(1);
+                app.imgSettings(k, 4) = p(2);
+            end
+        end
+
         %% Proceed with Existing Workflow
         app.currentImageIndex = 1;
+        app.currModality = 1;
+        % Initialize slider for FlairStar (Modality 1)
+        if app.fileStatus(1)
+             app.Slider.Limits = app.imgSettings(1, 1:2);
+             app.Slider.Value  = app.imgSettings(1, 3:4);
+        end
+        
         updateImage(app);
 
         close all;
@@ -958,6 +994,10 @@ classdef CvsView_exported < matlab.apps.AppBase
 
         % Value changed function: Slider
         function SliderValueChanged(app, event)
+            % Save slider settings to current modality immediately
+            if app.currModality > 0 && app.currModality <= 4
+                app.imgSettings(app.currModality, 3:4) = app.Slider.Value;
+            end
             updateImage(app); 
             
         end
@@ -966,47 +1006,60 @@ classdef CvsView_exported < matlab.apps.AppBase
         function SliderValueChanging(app, event)
             app.Slider.Value(1) = event.Value(1);
             app.Slider.Value(2) = event.Value(2);
+            
+            % Save slider settings to current modality immediately
+            if app.currModality > 0 && app.currModality <= 4
+                app.imgSettings(app.currModality, 3:4) = event.Value;
+            end
 
             updateImage(app); 
         end
 
         % Selection changed function: ButtonGroup
         function ButtonGroupSelectionChanged(app, event)
+            
+            % Save current slider settings for the previous modality
+            if app.currModality > 0
+                app.imgSettings(app.currModality, 3:4) = app.Slider.Value;
+            end
+
+            newMod = 1;
             switch app.ButtonGroup.SelectedObject.Text
                 case 'FlairStar'
                     app.whichT2 = app.FlairStar;
-                    colorrange(:,1) = app.Slider.Limits;
-                    app.Slider.Limits = colorrange(:,1);
-                    app.Slider.Value(2) = max(app.Slider.Limits);   
+                    newMod = 1;
                 case 'FLAIR'
                     app.whichT2 = app.flair;
-                    app.Slider.Limits = double([min(app.FlairStar(:)) max(app.FlairStar(:))]);
-                    app.Slider.Value(2) = max(app.Slider.Limits);                     
+                    newMod = 3;
                 case 'SWI'
                     app.whichT2 = app.swi;
-                    app.Slider.Limits = double([min(app.FlairStar(:)) max(app.FlairStar(:))]);
-                    app.Slider.Value(2) = max(app.Slider.Limits);                     
+                    newMod = 2;
                 case 'Phase'
                     app.whichT2 = app.phase;
-                    app.Slider.Limits = double([min(app.FlairStar(:)) max(app.FlairStar(:))]);
-                    app.Slider.Value(2) = max(app.Slider.Limits);                     
+                    newMod = 4;
             end
+            
+            app.currModality = newMod;
+            
+            % Restore settings for the new modality
+            % Ensure limits are valid (min < max)
+            lims = app.imgSettings(newMod, 1:2);
+            vals = app.imgSettings(newMod, 3:4);
+            
+            if lims(2) > lims(1)
+                app.Slider.Limits = lims;
+                % Clamp values to limits
+                vals(1) = max(lims(1), vals(1));
+                vals(2) = min(lims(2), vals(2));
+                app.Slider.Value = vals;
+            end
+            
             updateImage(app); 
         end
 
         % Button down function: ButtonGroup
         function ButtonGroupButtonDown(app, event)
-            switch app.ButtonGroup.SelectedObject.Text
-                case 'FlairStar'
-                    app.whichT2 = app.FlairStar;
-                case 'FLAIR'
-                    app.whichT2 = app.flair;
-                case 'SWI'
-                    app.whichT2 = app.swi;
-                case 'Phase'
-                    app.whichT2 = app.phase;
-            end
-            updateImage(app);  
+            % Logic is handled in SelectionChanged
         end
     end
 
