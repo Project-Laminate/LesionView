@@ -67,8 +67,8 @@ classdef CvsView_exported < matlab.apps.AppBase
 
 
         % Visualization and UI elements
-        sizeZoom double = 52; % Zoom window size for detailed lesion viewing
-        
+        sizeZoom double = 75; % Zoom window size for detailed lesion viewing
+                
         % Store [limitMin, limitMax, valMin, valMax] for each modality
         % 1=FlairStar, 2=SWI, 3=FLAIR, 4=Phase
         imgSettings = zeros(4,4); 
@@ -81,6 +81,17 @@ classdef CvsView_exported < matlab.apps.AppBase
 
         hLes_other 
         hLes_selected 
+        
+        % Z-score color range properties
+        % Image z-score statistics: [mean, std] for each image type
+        % Order: [FlairStar, SWI, FLAIR, Phase]
+        imageZStats = zeros(4,2); % [mean, std] for each image type
+        % Last used z-score color ranges: [min_z, max_z] for each image type
+        % Order: [FlairStar, SWI, FLAIR, Phase]
+        imageZRanges = zeros(4,2); % [min_z, max_z] for each image type
+        % Default z-score ranges (5th and 95th percentiles)
+        imageZRangesDefault = zeros(4,2); % [min_z, max_z] default for each image type
+        currentImageType = 1; % 1=FlairStar, 2=SWI, 3=FLAIR, 4=Phase 
 
 
         % Lesion processing and review properties
@@ -155,7 +166,7 @@ classdef CvsView_exported < matlab.apps.AppBase
             selectedMask = (currentLesionMask == selectedLabel);
             otherMask = (currentLesionMask > 0) & (currentLesionMask ~= selectedLabel);
 
-            % --- Process Selected Lesion Mask ---
+           % --- Process Selected Lesion Mask ---
 
             % Extract and process slices for the selected lesion (bottom row)
             les_selected21 = mat2gray(squeeze(selectedMask(app.x0.Value,:,:)))';
@@ -245,12 +256,13 @@ classdef CvsView_exported < matlab.apps.AppBase
             set(app.hLes_selected, 'AlphaData', double(img_selected) * app.OverlayAlpha); % Ensure you have a SelectedOverlayAlpha property
 
             % --- Draw Zoom Rectangles (Optional) ---
-            
-            if app.CheckBox.Value
-                % Calculate starting positions for rectangles
-                startXImg22 = size(img21, 2) + 1;
-                startXImg23 = startXImg22 + size(img22, 2);
-                startY = size(img21, 1) + 1;
+
+
+            % Calculate starting positions for rectangles
+            startXImg22 = size(img21, 2) + 1;
+            startXImg23 = startXImg22 + size(img22, 2);
+            startY = size(img21, 1) + 1;
+
 
             % Define the zoom area size
             zoomAreaSize = 2 * app.sizeZoom; % The size of the zoomed area
@@ -272,7 +284,8 @@ classdef CvsView_exported < matlab.apps.AppBase
                 startY + app.x0.Value - app.sizeZoom, ...
                 zoomAreaSize, zoomAreaSize], ...
                 'EdgeColor', 'w', 'LineWidth', 1, 'Parent', app.UIAxes);
-            
+
+
             hold(app.UIAxes, 'off');
 
         end
@@ -569,8 +582,7 @@ classdef CvsView_exported < matlab.apps.AppBase
             app.FlairInfo = niftiinfo(FlairPath);
             app.FlairStar = flip(app.FlairStar,2); % Adjust orientation as needed
             app.FlairStar = flip(app.FlairStar,3);
-            app.fileStatus(1) = true;
-            % Slider initialization is now handled after all images are processed
+            app.fileStatus(1) = true;                         
             
         else
             updateProgress(app,['*** No FlairStar found ***'])
@@ -630,7 +642,7 @@ classdef CvsView_exported < matlab.apps.AppBase
             % app.FlairInfo = niftiinfo(fullfile(lesion1File(1).folder, lesion1File(1).name));
             app.fileStatus(2) = true;
             % New file names for saving the cleaned-up version of lesions
-            app.cvsNiftiName = fullfile(app.bidsDir,'derivatives','CvsView',app.subject, strrep(lesion1File(1).name,'lesion_mask.nii.gz','cvs_mask.nii.gz'));
+            app.cvsNiftiName = fullfile(app.bidsDir,'derivatives','CvsView_test',app.subject, strrep(lesion1File(1).name,'lesion_mask.nii.gz','cvs_mask.nii.gz'));
         else
             updateProgress(app,['*** No lesion mask found ***'])
         end
@@ -742,10 +754,16 @@ classdef CvsView_exported < matlab.apps.AppBase
                 % Compute Default Range
                 % Subsample for speed
                 d_sub = d(1:20:end); 
-                if k == 4 % Phase: 35th and 65th percentile
-                    p = prctile(d_sub, [35 65]);
-                else % Others (FlairStar, SWI, FLAIR): 5th and 99th percentile
-                    p = prctile(d_sub, [5 99]);
+                % Filter out strict zeros which might be background padding
+                d_sub = d_sub(d_sub ~= 0);
+                
+                if isempty(d_sub)
+                     % Fallback if image is all zeros
+                     p = [0 1];
+                elseif k == 4 % Phase: 35th and 90th percentile
+                    p = prctile(d_sub, [35 90]);
+                else % Others (FlairStar, SWI, FLAIR): 5th and 99.99th percentile
+                    p = prctile(d_sub, [5 99.99]);
                 end
                 app.imgSettings(k, 3) = p(1);
                 app.imgSettings(k, 4) = p(2);
@@ -760,7 +778,7 @@ classdef CvsView_exported < matlab.apps.AppBase
              app.Slider.Limits = app.imgSettings(1, 1:2);
              app.Slider.Value  = app.imgSettings(1, 3:4);
         end
-        
+
         updateImage(app);
 
         close all;
@@ -784,7 +802,37 @@ classdef CvsView_exported < matlab.apps.AppBase
 
         % Button pushed function: ExportNIfTIButton
         function ExportNIfTIButtonPushed(app, event)
-            folder = fullfile(app.bidsDir,'derivatives','CvsView',app.subject);
+            folder = fullfile(app.bidsDir,'derivatives','CvsView_test',app.subject);
+            if ~isfolder(folder), mkdir(folder); end
+
+            % quantize to 2 decimals and build volume
+            cvsPq = min(1, max(0, round(app.cvsP(:), 2)));
+            lut   = [0; cvsPq];
+            app.cvsMat = single(lut(double(app.L1raw)+1));
+
+            try
+                updateProgress(app,'Exporting NIfTI ...');
+
+                % Update header info to match the data class (single)
+                info = app.FlairInfo;
+                info.Datatype = 'single';
+                info.BitsPerPixel = 32;
+                
+                % write
+                niftiwrite(app.cvsMat, app.cvsNiftiName, info, 'Compressed', true);
+                updateProgress(app,'NIfTI exported!');
+
+                % also save cvsP cache
+                cvsP = cvsPq; 
+                save(fullfile(folder,'cache.mat'),'cvsP','-v7');
+                updateProgress(app,'cache.mat exported!');
+
+            catch ME
+                rethrow(ME);
+            end
+        % Button pushed function: ExportNIfTIButton
+        function ExportNIfTIButtonPushed(app, event)
+            folder = fullfile(app.bidsDir,'derivatives','CvsView_test',app.subject);
             if ~isfolder(folder), mkdir(folder); end
 
             % quantize to 2 decimals and build volume
@@ -809,39 +857,35 @@ classdef CvsView_exported < matlab.apps.AppBase
             end
 
         end
+        end
 
         % Button pushed function: ExportPNGButton
         function ExportPNGButtonPushed(app, event)
 
             % Define a subfolder to store exported images
-            exportFolder = fullfile(app.bidsDir,'derivatives','CvsView',app.subject); if ~exist(exportFolder,'dir'), mkdir(exportFolder); end
+            exportFolder = fullfile(app.bidsDir,'derivatives','CvsView',app.subject); 
+            if ~exist(exportFolder,'dir'), mkdir(exportFolder); end
 
-            % select top-6 by probability
-            [~,ord] = sort(app.cvsP(:),'descend'); lesions = ord(1:min(6,numel(app.cvsP)));
+            % Generate filename based on current coordinates and time
+            timestamp = datestr(now, 'yyyymmdd_HHMMSS');
+            fn = sprintf('%s_x%d_y%d_z%d_%s.png', app.subject, app.x0.Value, app.y0.Value, app.z0.Value, timestamp);
+            fullPath = fullfile(exportFolder, fn);
 
-            % ----- text report -----
-            P = 100*app.cvsP(:);
-            totalVolML = sum(app.lesionVol)*prod(app.FlairInfo.PixelDimensions)/1000;
-            edges = [0 20 40 60 80 100+eps]; counts = histcounts(P,edges);        % [0-20),[20-40),...,[80-100]
-            fid = fopen(fullfile(exportFolder,[app.subject '.txt']),'w');
-            fprintf(fid,'Subject: %s\nTotal lesions: %d\nTotal volume: %.2f ml\n',app.subject,numel(P),totalVolML);
-            lows = [80 60 40 20 0]; highs = [100 80 60 40 20]; cc = fliplr(counts);
-            for ii = 1:numel(lows), fprintf(fid,'%d-%d%%: %d lesions\n',lows(ii),highs(ii),cc(ii)); end
-            fprintf(fid,'Exported PNGs (top-%d by probability): %s\n',numel(lesions),strjoin(compose('%d',lesions.'),', '));
-            fclose(fid);
-
-            % ----- PNG export -----
-            if isempty(lesions), uialert(app.UIFigure,'No lesions to export.','Export'); return; end
-            wb = waitbar(0,'Exporting...');
-            for ii = 1:numel(lesions)
-                idx = lesions(ii); app.LesionIndexSpinner.Value = idx; LesionIndexSpinnerValueChanged(app,[]); updateImage(app);
-                fn = sprintf('%s_CVS_%d_%d%%.png',app.subject,idx,round(P(idx)));
-                try exportgraphics(app.UIAxes,fullfile(exportFolder,fn),'Resolution',300); catch f=getframe(app.UIAxes); imwrite(f.cdata,fullfile(exportFolder,fn)); end
-                waitbar(ii/numel(lesions),wb);
+            try
+                updateProgress(app, ['Exporting snapshot: ' fn]);
+                exportgraphics(app.UIAxes, fullPath, 'Resolution', 300); 
+                updateProgress(app, 'Snapshot saved.');
+            catch ME
+                % Fallback if exportgraphics fails (e.g. old MATLAB)
+                try
+                    f = getframe(app.UIAxes); 
+                    imwrite(f.cdata, fullPath);
+                    updateProgress(app, 'Snapshot saved (fallback).');
+                catch ME2
+                     uialert(app.UIFigure, ['Export failed: ' ME.message], 'Error');
+                end
             end
-            close(wb);
-            uialert(app.UIFigure,sprintf('Exported %d lesions to %s.',numel(lesions),exportFolder),'Export Completed');
-
+            
         end
 
         % Key press function: UIFigure
@@ -866,6 +910,9 @@ classdef CvsView_exported < matlab.apps.AppBase
                 case 'backslash'
                     app.z0.Value = app.z0.Value + 1;
                     updateImage(app);
+                case 'x'
+                    app.CheckBox.Value = ~app.CheckBox.Value;
+                    CheckBoxValueChanged(app, []);
             end
 
         end
@@ -898,24 +945,15 @@ classdef CvsView_exported < matlab.apps.AppBase
                         LesionIndexSpinnerValueChanged(app, []);
 
                     case 'uparrow'
-                        % Decrease spinner value
-                        newValue = app.LesionIndexSpinner.Value - 1;
-                        % Check if newValue is less than Spinner's Minimum
-                        if newValue >= app.LesionIndexSpinner.Limits(1)
-                            app.LesionIndexSpinner.Value = newValue;
-                        end
-                        LesionIndexSpinnerValueChanged(app, []);
+                        % Increase zoom size (zoom out)
+                        app.sizeZoom = min(100, app.sizeZoom + 5);
+                        updateImage(app);
               
 
                     case 'downarrow'
-
-                        % Increase spinner value
-                        newValue = app.LesionIndexSpinner.Value + 1;
-                        % Check if newValue exceeds Spinner's Maximum
-                        if newValue <= app.LesionIndexSpinner.Limits(2)
-                            app.LesionIndexSpinner.Value = newValue;
-                        end
-                        LesionIndexSpinnerValueChanged(app, []);
+                        % Decrease zoom size (zoom in)
+                        app.sizeZoom = max(20, app.sizeZoom - 5);
+                        updateImage(app);
 
                     case 'd'
 
@@ -955,7 +993,6 @@ classdef CvsView_exported < matlab.apps.AppBase
                             app.ButtonGroup.SelectedObject = app.Phase;
                             ButtonGroupSelectionChanged(app, []);
                         end
-
                  
 
                 end
@@ -1014,23 +1051,18 @@ classdef CvsView_exported < matlab.apps.AppBase
         function SliderValueChanging(app, event)
             app.Slider.Value(1) = event.Value(1);
             app.Slider.Value(2) = event.Value(2);
-            
+
             % Save slider settings to current modality immediately
             if app.currModality > 0 && app.currModality <= 4
                 app.imgSettings(app.currModality, 3:4) = event.Value;
             end
+
 
             updateImage(app); 
         end
 
         % Selection changed function: ButtonGroup
         function ButtonGroupSelectionChanged(app, event)
-            
-            % Save current slider settings for the previous modality
-            if app.currModality > 0
-                app.imgSettings(app.currModality, 3:4) = app.Slider.Value;
-            end
-
             newMod = 1;
             switch app.ButtonGroup.SelectedObject.Text
                 case 'FlairStar'
@@ -1067,7 +1099,7 @@ classdef CvsView_exported < matlab.apps.AppBase
 
         % Button down function: ButtonGroup
         function ButtonGroupButtonDown(app, event)
-            % Logic is handled in SelectionChanged
+
         end
     end
 
@@ -1094,7 +1126,6 @@ classdef CvsView_exported < matlab.apps.AppBase
 
             % Create UIAxes
             app.UIAxes = uiaxes(app.LeftPanel);
-            title(app.UIAxes, 'PP')
             app.UIAxes.Toolbar.Visible = 'off';
             app.UIAxes.Position = [32 162 1005 668];
 
