@@ -37,6 +37,8 @@ classdef CvsView_exported < matlab.apps.AppBase
         FlairInfo % metadata - Information about the T2 flair images (used for saving or processing)
         fileStatus = [false,false,false,false,false]; % whether each files are loaded
         allowKey = 0;
+        isCorrectedMaskLoaded = false; % Flag to skip splitting if corrected mask is loaded
+        
         
 
         % Image data properties
@@ -293,7 +295,61 @@ classdef CvsView_exported < matlab.apps.AppBase
         function analyzeLesions(app)
             close all;
 
-            app.L1 = uint32(bwlabeln(app.Lesion1 > 0.8, 26));
+
+            % --- Optimized Watershed Splitting (Component-wise) ---
+            % 1. Threshold to binary
+            bw = app.Lesion1 > 0.8;
+            if ~app.isCorrectedMaskLoaded
+
+                % 2. Analyze Connected Components
+                % Processing per-lesion is much faster than processing the full 3D volume
+                CC = bwconncomp(bw, 26);
+                stats = regionprops(CC, 'PixelList');
+
+                % Sensitivity (h): Higher = harder to split.
+                h = 1.5;
+
+                for k = 1:CC.NumObjects
+                    % Get bounding box indices from PixelList
+                    P = stats(k).PixelList;
+                    if isempty(P), continue; end
+
+                    % PixelList is [x, y, z]
+                    min_x = min(P(:,1)); max_x = max(P(:,1));
+                    min_y = min(P(:,2)); max_y = max(P(:,2));
+                    min_z = min(P(:,3)); max_z = max(P(:,3));
+
+                    % Extract sub-volume
+                    subVol = bw(min_y:max_y, min_x:max_x, min_z:max_z);
+
+                    % Skip if volume is too small to split
+                    if numel(subVol) < 27, continue; end % 3x3x3 minimum
+
+                    % -- Local Watershed --
+                    D = bwdist(~subVol);
+                    D = -D;
+
+                    mask = imextendedmin(D, h);
+
+                    % Only split if multiple centers are found
+                    if sum(mask(:)) > 1
+                        D_mod = imimposemin(D, mask);
+                        L_ws = watershed(D_mod);
+
+                        % Remove ridge lines
+                        subVol(L_ws == 0) = 0;
+
+                        % Put back into main mask
+                        bw(min_y:max_y, min_x:max_x, min_z:max_z) = subVol;
+                    end
+                end
+            else
+                updateProgress(app, 'Loaded corrected mask; skipping watershed splitting.');
+
+            end
+
+            % --- Labeling ---
+            app.L1 = uint32(bwlabeln(bw, 26));
             N = double(max(app.L1(:))); if isempty(N) || N==0, N = 1; end
 
             % --- Map VIEW labels directly to RAW grid (no intersection with RAW mask) ---
@@ -384,7 +440,7 @@ classdef CvsView_exported < matlab.apps.AppBase
 
             updateProgress(app,['check for previous files ...'])
 
-            cacheFile = fullfile(app.bidsDir,'derivatives','CvsView',app.subject,'cache.mat');
+            cacheFile = fullfile(app.bidsDir,'derivatives','CvsView_test',app.subject,'cache.mat');
             if isfile(cacheFile)
                 choice = uiconfirm(app.UIFigure,'A cache file was found. Load it or start new?','Load Cache?', ...
                     'Options',{'Load Cache','Start New'},'DefaultOption',1,'CancelOption',2);
@@ -632,19 +688,34 @@ classdef CvsView_exported < matlab.apps.AppBase
 
 
         %% Load Lesion Mask
-        lesion1File = dir(fullfile(app.bidsDir,'derivatives',LamDir,app.subject, '*lesion_mask.nii.gz'));
-
-        if ~isempty(lesion1File)
-            updateProgress(app,['Loading Lesion mask from : ', fullfile(lesion1File(1).folder, lesion1File(1).name)]);
-            LesionPath = fullfile(lesion1File(1).folder, lesion1File(1).name);
-            app.Lesion1 = niftiread(LesionPath);
+        % First check if a corrected mask exists
+        correctedMaskName = sprintf('%s_ses-01_space-swi_desc-lesionCorrection_mask.nii.gz', app.subject);
+        correctedMaskPath = fullfile(app.bidsDir,'derivatives','CvsView_test',app.subject, correctedMaskName);
+        
+        if isfile(correctedMaskPath)
+            updateProgress(app,['Loading Corrected Lesion mask from : ', correctedMaskPath]);
+            app.Lesion1 = niftiread(correctedMaskPath);
             app.backupLesion1 = app.Lesion1;
-            % app.FlairInfo = niftiinfo(fullfile(lesion1File(1).folder, lesion1File(1).name));
             app.fileStatus(2) = true;
-            % New file names for saving the cleaned-up version of lesions
-            app.cvsNiftiName = fullfile(app.bidsDir,'derivatives','CvsView_test',app.subject, strrep(lesion1File(1).name,'lesion_mask.nii.gz','cvs_mask.nii.gz'));
+            app.cvsNiftiName = fullfile(app.bidsDir,'derivatives','CvsView_test',app.subject, correctedMaskName);
+            app.isCorrectedMaskLoaded = true;
         else
-            updateProgress(app,['*** No lesion mask found ***'])
+            app.isCorrectedMaskLoaded = false;
+            % Fallback to original mask
+            lesion1File = dir(fullfile(app.bidsDir,'derivatives',LamDir,app.subject, '*lesion_mask.nii.gz'));
+
+            if ~isempty(lesion1File)
+                updateProgress(app,['Loading Lesion mask from : ', fullfile(lesion1File(1).folder, lesion1File(1).name)]);
+                LesionPath = fullfile(lesion1File(1).folder, lesion1File(1).name);
+                app.Lesion1 = niftiread(LesionPath);
+                app.backupLesion1 = app.Lesion1;
+                % app.FlairInfo = niftiinfo(fullfile(lesion1File(1).folder, lesion1File(1).name));
+                app.fileStatus(2) = true;
+                % New file names for saving the cleaned-up version of lesions
+                app.cvsNiftiName = fullfile(app.bidsDir,'derivatives','CvsView_test',app.subject, strrep(lesion1File(1).name,'lesion_mask.nii.gz','cvs_mask.nii.gz'));
+            else
+                updateProgress(app,['*** No lesion mask found ***'])
+            end
         end
         close all;
 
@@ -760,10 +831,10 @@ classdef CvsView_exported < matlab.apps.AppBase
                 if isempty(d_sub)
                      % Fallback if image is all zeros
                      p = [0 1];
-                elseif k == 4 % Phase: 35th and 90th percentile
-                    p = prctile(d_sub, [35 90]);
+                elseif k == 4 % Phase
+                    p = prctile(d_sub, [35 65]);
                 else % Others (FlairStar, SWI, FLAIR): 5th and 99.99th percentile
-                    p = prctile(d_sub, [5 99.99]);
+                    p = prctile(d_sub, [10 99.995]);
                 end
                 app.imgSettings(k, 3) = p(1);
                 app.imgSettings(k, 4) = p(2);
@@ -802,7 +873,7 @@ classdef CvsView_exported < matlab.apps.AppBase
 
         % Button pushed function: ExportNIfTIButton
         function ExportNIfTIButtonPushed(app, event)
-            folder = fullfile(app.bidsDir,'derivatives','CvsView_test',app.subject);
+           folder = fullfile(app.bidsDir,'derivatives','CvsView_test',app.subject);
             if ~isfolder(folder), mkdir(folder); end
 
             % quantize to 2 decimals and build volume
@@ -813,39 +884,46 @@ classdef CvsView_exported < matlab.apps.AppBase
             try
                 updateProgress(app,'Exporting NIfTI ...');
 
+                % FIX: Get header from ORIGINAL lesion mask file, not FlairInfo
+                % FlairInfo has been modified with VIEW space + padding dimensions
+                % but cvsMat (from L1raw) is in original RAW space
+                lesionFile = dir(fullfile(app.bidsDir, 'derivatives', 'flairStar', app.subject, '*lesion_mask.nii.gz'));
+                if ~isempty(lesionFile)
+                    lesionInfo = niftiinfo(fullfile(lesionFile(1).folder, lesionFile(1).name));
+                else
+                    % Fallback: use FlairInfo but fix the ImageSize
+                    lesionInfo = app.FlairInfo;
+                    lesionInfo.ImageSize = size(app.cvsMat);
+                end
+
                 % Update header info to match the data class (single)
-                info = app.FlairInfo;
+                info = lesionInfo;
                 info.Datatype = 'single';
                 info.BitsPerPixel = 32;
                 
-                % write
+                % write CVS probability map
                 niftiwrite(app.cvsMat, app.cvsNiftiName, info, 'Compressed', true);
                 updateProgress(app,'NIfTI exported!');
 
-                % also save cvsP cache
-                cvsP = cvsPq; 
-                save(fullfile(folder,'cache.mat'),'cvsP','-v7');
-                updateProgress(app,'cache.mat exported!');
-
-            catch ME
-                rethrow(ME);
-            end
-        % Button pushed function: ExportNIfTIButton
-        function ExportNIfTIButtonPushed(app, event)
-            folder = fullfile(app.bidsDir,'derivatives','CvsView_test',app.subject);
-            if ~isfolder(folder), mkdir(folder); end
-
-            % quantize to 2 decimals and build volume
-            cvsPq = min(1, max(0, round(app.cvsP(:), 2)));
-            lut   = [0; cvsPq];
-            app.cvsMat = single(lut(double(app.L1raw)+1));
-
-            try
-                updateProgress(app,'Exporting NIfTI ...');
-
-                % write
-                niftiwrite(app.cvsMat, app.cvsNiftiName, app.FlairInfo, 'Compressed', true);
-                updateProgress(app,'NIfTI exported!');
+                % --- Export corrected binary lesion mask ---
+                % Filename: sub-xxx_ses-01_space-swi_desc-lesionCorrection_mask.nii.gz
+                % Only export if we haven't loaded an existing corrected mask, or if we want to overwrite
+                if ~app.isCorrectedMaskLoaded
+                    binaryName = sprintf('%s_ses-01_space-swi_desc-lesionCorrection_mask.nii.gz', app.subject);
+                    binaryPath = fullfile(folder, binaryName);
+                    
+                    % Create binary mask from L1raw (which contains all post-split lesions)
+                    % L1raw has labels 1..N. We want binary 1s.
+                    binaryMask = uint8(app.L1raw > 0);
+                    
+                    % Update header for binary mask (uint8) - use same lesionInfo
+                    infoBinary = lesionInfo;
+                    infoBinary.Datatype = 'uint8';
+                    infoBinary.BitsPerPixel = 8;
+                    
+                    niftiwrite(binaryMask, binaryPath, infoBinary, 'Compressed', true);
+                    updateProgress(app, 'Correction mask exported!');
+                end
 
                 % also save cvsP cache
                 cvsP = cvsPq; 
@@ -855,8 +933,7 @@ classdef CvsView_exported < matlab.apps.AppBase
             catch ME
                 rethrow(ME);
             end
-
-        end
+      
         end
 
         % Button pushed function: ExportPNGButton
@@ -954,6 +1031,7 @@ classdef CvsView_exported < matlab.apps.AppBase
                         % Decrease zoom size (zoom in)
                         app.sizeZoom = max(20, app.sizeZoom - 5);
                         updateImage(app);
+
 
                     case 'd'
 
